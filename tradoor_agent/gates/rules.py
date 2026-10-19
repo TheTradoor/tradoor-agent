@@ -39,9 +39,9 @@ def hard_gates(
     max_dev_hold: float,
     max_bundler: float,
     max_rat: float,
-    max_insider: float,
     max_snipers: int,
-    max_rug_ratio: float,
+    max_sniper_hold: float,
+    max_entrapment: float,
     require_renounced: bool,
 ) -> list[GateResult]:
     def le(name: str, v: float | int | None, limit: float, fmt=_pct) -> GateResult:
@@ -55,7 +55,7 @@ def hard_gates(
         return GateResult(name, v >= limit, detail=f"{fmt(v)} >= {fmt(limit)}", value=float(v))
 
     usd = lambda x: f"${x:,.0f}"  # noqa: E731
-    bonding = snap.launchpad_status == 1
+    bonding = not snap.migrated_pool and snap.launchpad_status != 2
     out = [
         ge("holders", snap.holder_count, min_holders),
         # on the bonding curve liquidity is implied by mcap; GMGN often reports 0 there. Gate it only after migration.
@@ -66,10 +66,10 @@ def hard_gates(
         le("dev_hold", snap.dev_hold_rate if snap.dev_hold_rate is not None else snap.creator_hold_rate, max_dev_hold),
         le("bundler", snap.bundler_rate, max_bundler),
         le("rat_trader", snap.rat_rate, max_rat),
-        le("insider", snap.insider_rate, max_insider),
         le("snipers", snap.sniper_count, max_snipers, fmt=str),
-        le("rug_ratio", snap.rug_ratio, max_rug_ratio),
-        GateResult("wash_trading", snap.wash_trading is not True, detail="n/a" if snap.wash_trading is None else str(snap.wash_trading)),
+        le("sniper_hold", snap.sniper_hold_rate, max_sniper_hold),
+        le("entrapment", snap.entrapment_rate, max_entrapment),
+        GateResult("honeypot", snap.honeypot is not True, detail="n/a" if snap.honeypot is None else str(snap.honeypot)),
     ]
     if require_renounced:
         # Solana: mint + freeze authority must both be renounced. None -> n/a (pass), False -> fail.

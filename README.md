@@ -14,16 +14,22 @@ PumpPortal WS (create/migrate, gratis)
    -> cheap gates (dev buy SOL, dev % supply, nama)          [0 API cost]
    -> watchlist (cek pertama +20s, lalu tiap 30s, maks 30 menit)
    -> GMGN /v1/token/info + /v1/token/security (weight 2 per cek, cache 15s)
-   -> hard gates (holders, liq, mcap, top10, dev, bundler, rat, insider, snipers, rug_ratio, renounced, wash)
+   -> hard gates (holders, liq*, mcap, top10, dev, bundler, rat, snipers, sniper_hold, entrapment, honeypot, renounced)  *liq hanya setelah migrasi
    -> candidates (lane=screened | drop, breakdown_json = semua metrik GMGN, gates_json = hasil per gate)
    -> TOPIC_CANDIDATE (dikonsumsi scoring di fase 2) + alert Telegram (maks 20/jam)
 ```
 
-Token yang gagal gate struktural (bundler, insider, rug_ratio, renounced, dev, rat, wash) dua kali berturut-turut
+Token yang gagal gate struktural (bundler, entrapment, honeypot, renounced, dev, rat) dua kali berturut-turut
 dibuang dari watchlist biar weight gak kebuang. Budget: 150 token x 2 weight / 30s = 10 weight/s dari 50.
 
 Semua threshold `GATE_*`, `CHEAP_*`, `SCREEN_*` bisa dioverride live tanpa restart: `/set gate_max_top10 0.25`
 (dibaca ulang tiap 10 detik). `/params` buat lihat, `/watch` buat lihat kandidat 1 jam terakhir.
+
+Catatan mapping GMGN (diverifikasi dari respons asli, bukan dokumentasi): `token/security` cuma memuat renounced / honeypot /
+tax / lock; `suspected_insider_hold_rate`, `sniper_count`, `rug_ratio`, `is_wash_trading` TIDAK ada. Penggantinya dari `info.stat`:
+`top70_sniper_hold_rate` → sniper_hold, `top_entrapment_trader_percentage` → entrapment, `private_vault_hold_rate`,
+`creator_created_count`; jumlah sniper dari `wallet_tags_stat.sniper_wallets`. Panel Diagnostics → "gmgn fields returned"
+selalu menampilkan struktur terbaru.
 
 ## Struktur
 

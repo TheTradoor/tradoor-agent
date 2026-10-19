@@ -283,6 +283,24 @@ def _first(*vals: Any) -> Any:
     return None
 
 
+def _chg(now: float | None, before: float | None) -> float | None:
+    if now is None or not before:
+        return None
+    return now / before - 1.0
+
+
+def _honeypot(sec: dict) -> bool | None:
+    """True when GMGN says the token cannot be sold."""
+    hp = _b(_first(sec.get("is_honeypot"), sec.get("honeypot")))
+    can_sell = _b(sec.get("can_sell"))
+    cannot = _b(sec.get("can_not_sell"))
+    if hp is True or cannot is True or can_sell is False:
+        return True
+    if hp is False or can_sell is True:
+        return False
+    return None
+
+
 def build_snapshot(mint: str, info: dict, sec: dict) -> TokenSnapshot:
     """Map GMGN info + security payloads to TokenSnapshot.
 
@@ -338,8 +356,10 @@ def build_snapshot(mint: str, info: dict, sec: dict) -> TokenSnapshot:
         volume_1m=_f(price.get("volume_1m")), swaps_1m=_i(price.get("swaps_1m")),
         buys_5m=_i(price.get("buys_5m")), sells_5m=_i(price.get("sells_5m")),
         volume_5m=_f(price.get("volume_5m")), swaps_5m=_i(price.get("swaps_5m")),
-        price_change_1m=_f(_first(price.get("price_1m"), price.get("price_change_1m"))),
-        price_change_5m=_f(_first(price.get("price_5m"), price.get("price_change_5m"))),
+        # price_1m / price_5m are the prices N minutes ago, so derive the change
+        price_change_1m=_chg(price_usd, _f(price.get("price_1m"))),
+        price_change_5m=_chg(price_usd, _f(price.get("price_5m"))),
+        migrated_pool=str(info.get("migrated_pool") or ""),
         top10_rate=rate("top_10_holder_rate"),
         dev_hold_rate=rate("dev_team_hold_rate"),
         creator_hold_rate=rate("creator_hold_rate", "creator_balance_rate"),
@@ -347,12 +367,18 @@ def build_snapshot(mint: str, info: dict, sec: dict) -> TokenSnapshot:
         bundler_rate=rate("bundler_trader_amount_rate", "top_bundler_trader_percentage", "bundler_rate"),
         rat_rate=rate("rat_trader_amount_rate", "top_rat_trader_percentage"),
         insider_rate=rate("suspected_insider_hold_rate"),
-        sniper_count=count("sniper_count"),
+        sniper_count=count("sniper_count", "sniper_wallets"),
+        sniper_hold_rate=rate("top70_sniper_hold_rate"),
+        entrapment_rate=rate("top_entrapment_trader_percentage"),
+        private_vault_rate=rate("private_vault_hold_rate"),
+        creator_created_count=count("creator_created_count"),
         rug_ratio=rate("rug_ratio"),
         wash_trading=_b(_first(sec.get("is_wash_trading"), info.get("is_wash_trading"))),
+        honeypot=_honeypot(sec),
         renounced_mint=_b(_first(sec.get("renounced_mint"), info.get("renounced_mint"))),
         renounced_freeze=_b(_first(sec.get("renounced_freeze_account"), info.get("renounced_freeze_account"))),
         burn_status=str(_first(sec.get("burn_status"), info.get("burn_status"), "") or ""),
+        burn_ratio=rate("burn_ratio"),
         fresh_wallet_rate=rate("fresh_wallet_rate"),
         bot_degen_count=count("bot_degen_count"),
         smart_wallets=count("smart_wallets", "smart_degen_count"),

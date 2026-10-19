@@ -106,6 +106,7 @@ class TokenSnapshot:
     swaps_5m: int | None = None
     price_change_1m: float | None = None
     price_change_5m: float | None = None
+    migrated_pool: str = ""                   # set once the token has a pool outside the launchpad
     # concentration / risk
     top10_rate: float | None = None
     dev_hold_rate: float | None = None
@@ -113,10 +114,16 @@ class TokenSnapshot:
     creator_status: str = ""                  # creator_hold | creator_close | ...
     bundler_rate: float | None = None
     rat_rate: float | None = None
-    insider_rate: float | None = None
-    sniper_count: int | None = None
-    rug_ratio: float | None = None
-    wash_trading: bool | None = None
+    insider_rate: float | None = None         # GMGN does not return this today; kept for other sources
+    sniper_count: int | None = None           # wallet_tags_stat.sniper_wallets
+    sniper_hold_rate: float | None = None     # stat.top70_sniper_hold_rate
+    entrapment_rate: float | None = None      # stat.top_entrapment_trader_percentage (known trap/scam wallets)
+    private_vault_rate: float | None = None   # stat.private_vault_hold_rate
+    creator_created_count: int | None = None  # stat.creator_created_count (serial launcher?)
+    rug_ratio: float | None = None            # not returned by GMGN today
+    wash_trading: bool | None = None          # not returned by GMGN today
+    honeypot: bool | None = None              # security.is_honeypot / can_sell
+    burn_ratio: float | None = None
     renounced_mint: bool | None = None
     renounced_freeze: bool | None = None
     burn_status: str = ""

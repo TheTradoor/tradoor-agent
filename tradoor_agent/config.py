@@ -75,9 +75,9 @@ class Settings(BaseSettings):
     gate_max_dev_hold: float = 0.15
     gate_max_bundler: float = 0.20
     gate_max_rat: float = 0.20
-    gate_max_insider: float = 0.20
-    gate_max_snipers: int = 15
-    gate_max_rug_ratio: float = 0.30
+    gate_max_snipers: int = 15              # wallet_tags_stat.sniper_wallets
+    gate_max_sniper_hold: float = 0.30      # stat.top70_sniper_hold_rate
+    gate_max_entrapment: float = 0.10       # stat.top_entrapment_trader_percentage (known trap wallets)
     gate_require_renounced: bool = True
 
     # --- wallet (confirm / live only) ---

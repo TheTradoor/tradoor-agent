@@ -189,6 +189,7 @@ class WebDashboard(Component):
                 "mcap_usd": b.get("mcap_usd"), "liquidity_usd": b.get("liquidity_usd"), "holders": b.get("holder_count"),
                 "top10": b.get("top10_rate"), "dev": b.get("dev_hold_rate", b.get("creator_hold_rate")),
                 "bundler": b.get("bundler_rate"), "insider": b.get("insider_rate"), "snipers": b.get("sniper_count"),
+                "sniper_hold": b.get("sniper_hold_rate"), "entrapment": b.get("entrapment_rate"), "created_count": b.get("creator_created_count"),
                 "smart": b.get("smart_wallets"), "renowned": b.get("renowned_wallets"),
                 "buys_1m": b.get("buys_1m"), "sells_1m": b.get("sells_1m"), "buys_5m": b.get("buys_5m"), "sells_5m": b.get("sells_5m"),
                 "progress": b.get("launchpad_progress"), "migrated": b.get("migrated"),
@@ -262,6 +263,7 @@ class WebDashboard(Component):
             rec = {"id": r["id"], "ts": r["ts"], "mint": r["mint"], "lane": r["lane"], "age": int(r["token_age_sec"] or 0),
                    "symbol": b.get("symbol"), "mcap": b.get("mcap_usd"), "holders": b.get("holder_count"), "liq": b.get("liquidity_usd"),
                    "top10": b.get("top10_rate"), "bundler": b.get("bundler_rate"), "insider": b.get("insider_rate"), "snipers": b.get("sniper_count"),
+                   "sniper_hold": b.get("sniper_hold_rate"), "entrapment": b.get("entrapment_rate"),
                    "dev": b.get("dev_hold_rate", b.get("creator_hold_rate")), "smart": b.get("smart_wallets"),
                    "indexed": bool(b.get("mcap_usd")) and (b.get("holder_count") or 0) > 1,
                    "failed": [g.get("name") for g in gates if not g.get("passed")],
@@ -286,7 +288,7 @@ class WebDashboard(Component):
             q = lambda f: vals[min(len(vals) - 1, int(f * (len(vals) - 1)))]  # noqa: E731
             return {"n": len(vals), "p50": q(0.5), "p90": q(0.9), "max": vals[-1]}
 
-        metrics = {k: pcts(k) for k in ("holders", "mcap", "liq", "top10", "bundler", "insider", "snipers", "dev", "smart")}
+        metrics = {k: pcts(k) for k in ("holders", "mcap", "liq", "top10", "bundler", "sniper_hold", "entrapment", "snipers", "dev", "smart")}
         top = sorted(best.values(), key=lambda v: -(v["mcap"] or 0))[:12]
         one_away: dict[str, int] = {}
         for v in latest.values():

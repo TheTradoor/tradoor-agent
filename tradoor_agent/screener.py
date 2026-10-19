@@ -18,7 +18,7 @@ from .ingest.pumpportal import PumpPortalIngest, dev_initial_buy
 from .models import Candidate, Lane, TokenEvent, TokenSnapshot
 
 # failing one of these twice in a row means the token's structure is bad; stop spending weight on it
-STRUCTURAL = {"renounced_mint", "renounced_freeze", "rug_ratio", "bundler", "insider", "wash_trading", "dev_hold", "rat_trader"}
+STRUCTURAL = {"renounced_mint", "renounced_freeze", "honeypot", "bundler", "entrapment", "dev_hold", "rat_trader"}
 # gates a healthy token simply has not reached yet; failing only these is "not yet", not "bad"
 GROWTH = {"holders", "liquidity", "mcap_min"}
 CHECKS_PER_TICK = 8
@@ -172,8 +172,8 @@ class Screener(Component):
             min_holders=p("gate_min_holders"), min_liquidity_usd=p("gate_min_liquidity_usd"),
             min_mcap_usd=p("gate_min_mcap_usd"), max_mcap_usd=p("gate_max_mcap_usd"),
             max_top10=p("gate_max_top10"), max_dev_hold=p("gate_max_dev_hold"),
-            max_bundler=p("gate_max_bundler"), max_rat=p("gate_max_rat"), max_insider=p("gate_max_insider"),
-            max_snipers=p("gate_max_snipers"), max_rug_ratio=p("gate_max_rug_ratio"),
+            max_bundler=p("gate_max_bundler"), max_rat=p("gate_max_rat"),
+            max_snipers=p("gate_max_snipers"), max_sniper_hold=p("gate_max_sniper_hold"), max_entrapment=p("gate_max_entrapment"),
             require_renounced=p("gate_require_renounced"),
         )
         bad = failed(gates)
@@ -268,7 +268,7 @@ class Screener(Component):
             f"screened ${s.symbol or e.evt.symbol} · {int(age // 60)}m{prog}\n"
             f"mcap {usd(s.mcap_usd)} · liq {usd(s.liquidity_usd)} · holders {s.holder_count or 'n/a'}\n"
             f"top10 {pct(s.top10_rate)} · dev {pct(s.dev_hold_rate if s.dev_hold_rate is not None else s.creator_hold_rate)} · bundler {pct(s.bundler_rate)} · insider {pct(s.insider_rate)}\n"
-            f"snipers {s.sniper_count if s.sniper_count is not None else 'n/a'} · smart {s.smart_wallets or 0} · renowned {s.renowned_wallets or 0}\n"
+            f"snipers {s.sniper_count if s.sniper_count is not None else 'n/a'} ({pct(s.sniper_hold_rate)}) · trap {pct(s.entrapment_rate)} · smart {s.smart_wallets or 0} · renowned {s.renowned_wallets or 0}\n"
             f"1m {s.buys_1m or 0}b/{s.sells_1m or 0}s · 5m {s.buys_5m or 0}b/{s.sells_5m or 0}s\n"
             f"gmgn.ai/sol/token/{s.mint}"
         )

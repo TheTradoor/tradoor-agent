@@ -49,23 +49,24 @@ FRAMES = [
 
 # fake GMGN payloads in the documented nested shape
 GMGN_INFO = {
+    # shapes mirror what openapi.gmgn.ai really returns (see Diagnostics -> "gmgn fields returned")
     GOOD: {"symbol": "GOOD", "name": "Good Coin", "total_supply": 1e9, "liquidity": 24000, "holder_count": 180,
-           "launchpad_platform": "pump", "launchpad_status": 1, "launchpad_progress": 0.62,
-           "price": {"price": "0.000045", "buys_1m": 14, "sells_1m": 5, "volume_1m": 2100, "swaps_1m": 19, "buys_5m": 60, "sells_5m": 22},
+           "launchpad_platform": "pump", "launchpad_status": 1, "launchpad_progress": 0.62, "migrated_pool": None,
+           "price": {"price": "0.000045", "price_1m": "0.00004", "price_5m": "0.00003", "buys_1m": 14, "sells_1m": 5, "volume_1m": 2100, "swaps_1m": 19, "buys_5m": 60, "sells_5m": 22},
            "dev": {"creator_address": "DevA", "creator_token_status": "creator_hold"},
-           "stat": {"top_10_holder_rate": 0.21, "dev_team_hold_rate": 0.02, "top_bundler_trader_percentage": 0.04, "top_rat_trader_percentage": 0.03, "fresh_wallet_rate": 0.1},
-           "wallet_tags_stat": {"smart_wallets": 3, "renowned_wallets": 1, "sniper_wallets": 4, "bundler_wallets": 2},
+           "stat": {"top_10_holder_rate": 0.21, "dev_team_hold_rate": 0.02, "top_bundler_trader_percentage": 0.04, "top_rat_trader_percentage": 0.03,
+                    "fresh_wallet_rate": 0.1, "top70_sniper_hold_rate": 0.12, "top_entrapment_trader_percentage": 0.0, "private_vault_hold_rate": 0.0, "creator_created_count": 2},
+           "wallet_tags_stat": {"smart_wallets": 3, "renowned_wallets": 1, "sniper_wallets": 6, "bundler_wallets": 2},
            "link": {"twitter_username": "goodcoin"}},
     BUND: {"symbol": "BUND", "total_supply": 1e9, "liquidity": 15000, "holder_count": 95, "price": {"price": "0.00003"},
-           "stat": {"top_10_holder_rate": 0.52, "dev_team_hold_rate": 0.01, "top_bundler_trader_percentage": 0.38}},
+           "stat": {"top_10_holder_rate": 0.52, "dev_team_hold_rate": 0.01, "top_bundler_trader_percentage": 0.38}, "wallet_tags_stat": {"sniper_wallets": 9}},
     RUGD: {"symbol": "RUGD", "total_supply": 1e9, "liquidity": 9000, "holder_count": 60, "price": {"price": "0.00002"},
-           "stat": {"top_10_holder_rate": 0.25, "dev_team_hold_rate": 0.05}},
+           "stat": {"top_10_holder_rate": 0.25, "dev_team_hold_rate": 0.05, "top_entrapment_trader_percentage": 0.35}, "wallet_tags_stat": {"sniper_wallets": 2}},
 }
 GMGN_SEC = {
-    GOOD: {"renounced_mint": True, "renounced_freeze_account": True, "rug_ratio": 0.0, "is_wash_trading": False, "sniper_count": 6,
-           "suspected_insider_hold_rate": 0.05, "bundler_trader_amount_rate": 0.04, "rat_trader_amount_rate": 0.03, "top_10_holder_rate": 0.21},
-    BUND: {"renounced_mint": True, "renounced_freeze_account": True, "rug_ratio": 0.1, "sniper_count": 9, "bundler_trader_amount_rate": 0.38, "top_10_holder_rate": 0.52},
-    RUGD: {"renounced_mint": True, "renounced_freeze_account": True, "rug_ratio": 0.8, "sniper_count": 2, "top_10_holder_rate": 0.25},
+    GOOD: {"renounced_mint": True, "renounced_freeze_account": True, "is_honeypot": False, "can_sell": True, "burn_status": "burn", "top_10_holder_rate": 0.21},
+    BUND: {"renounced_mint": True, "renounced_freeze_account": True, "is_honeypot": False, "top_10_holder_rate": 0.52},
+    RUGD: {"renounced_mint": True, "renounced_freeze_account": True, "is_honeypot": False, "top_10_holder_rate": 0.25},
 }
 
 
@@ -115,14 +116,17 @@ def unit_tests() -> None:
     s = build_snapshot(GOOD, GMGN_INFO[GOOD], GMGN_SEC[GOOD])
     assert s.price_usd == 0.000045 and s.mcap_usd == 45000 and s.holder_count == 180 and s.top10_rate == 0.21
     assert s.smart_wallets == 3 and s.buys_1m == 14 and s.launchpad_progress == 0.62 and s.renounced_mint is True
+    assert s.sniper_count == 6 and s.sniper_hold_rate == 0.12 and s.entrapment_rate == 0.0 and s.honeypot is False and s.creator_created_count == 2
+    assert abs(s.price_change_1m - 0.125) < 1e-9 and abs(s.price_change_5m - 0.5) < 1e-9
     s2 = build_snapshot("x", {"stat": {"top_10_holder_rate": 21.0}}, {})
     assert s2.top10_rate == 0.21, "percent values must be normalized to fractions"
 
-    th = dict(min_holders=30, min_liquidity_usd=3000, min_mcap_usd=8000, max_mcap_usd=250000, max_top10=0.30, max_dev_hold=0.10,
-              max_bundler=0.20, max_rat=0.20, max_insider=0.20, max_snipers=15, max_rug_ratio=0.30, require_renounced=True)
+    th = dict(min_holders=30, min_liquidity_usd=3000, min_mcap_usd=8000, max_mcap_usd=250000, max_top10=0.45, max_dev_hold=0.15,
+              max_bundler=0.20, max_rat=0.20, max_snipers=15, max_sniper_hold=0.30, max_entrapment=0.10, require_renounced=True)
     assert failed(hard_gates(s, **th)) == []
+    assert [g.detail for g in hard_gates(s, **th) if g.name == "liquidity"] == ["n/a (bonding)"]
     assert failed(hard_gates(build_snapshot(BUND, GMGN_INFO[BUND], GMGN_SEC[BUND]), **th)) == ["top10", "bundler"]
-    assert failed(hard_gates(build_snapshot(RUGD, GMGN_INFO[RUGD], GMGN_SEC[RUGD]), **th)) == ["rug_ratio"]
+    assert failed(hard_gates(build_snapshot(RUGD, GMGN_INFO[RUGD], GMGN_SEC[RUGD]), **th)) == ["entrapment"]
     print("unit tests OK")
 
 
@@ -169,7 +173,7 @@ async def _assert_results(db, state, screener, alerts, cands, gm) -> None:
     assert by_mint[GOOD][0] == "screened:pass"
     assert any(x.startswith("drop:fail:top10") for x in by_mint[GOOD]), "param override to 0.10 must flip GOOD to fail"
     assert by_mint[BUND][0] == "drop:fail:top10,bundler"
-    assert by_mint[RUGD][0] == "drop:fail:rug_ratio"
+    assert by_mint[RUGD][0] == "drop:fail:entrapment"
     assert BUND not in screener.watch and RUGD not in screener.watch, "structural fails must be evicted after 2 checks"
     assert not alerts.empty() and "screened $GOOD" in alerts.get_nowait()["text"]
     assert not cands.empty()
