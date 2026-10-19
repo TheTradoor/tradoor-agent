@@ -1,0 +1,7 @@
+python-telegram-bot>=22,<23
+pydantic>=2.7
+pydantic-settings>=2.3
+aiosqlite>=0.20
+websockets>=12
+aiohttp>=3.9
+anthropic>=0.40

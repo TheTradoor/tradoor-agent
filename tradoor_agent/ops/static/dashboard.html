@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TheTradoor Agent</title>
+<style>
+  :root{--bg:#0b0f14;--card:#111826;--line:#1f2937;--txt:#e6edf3;--mut:#8b98a9;--ok:#2ea043;--bad:#f85149;--warn:#d29922;--acc:#2f81f7;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  header{position:sticky;top:0;z-index:5;background:rgba(11,15,20,.92);backdrop-filter:blur(6px);border-bottom:1px solid var(--line);padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  h1{font-size:15px;margin:0 8px 0 0;font-weight:650}
+  .pill{font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);background:#0f1520;color:var(--mut);white-space:nowrap}
+  .pill b{color:var(--txt);font-weight:600}
+  .pill.ok{border-color:#1f6f35;color:#7ee29a}.pill.bad{border-color:#7a2a2a;color:#ff8f87}.pill.warn{border-color:#7a5a12;color:#f2c14e}
+  .spacer{flex:1}
+  button{font:inherit;font-size:12px;padding:6px 11px;border-radius:8px;border:1px solid var(--line);background:#0f1520;color:var(--txt);cursor:pointer}
+  button.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+  button.danger{background:#3a1416;border-color:#7a2a2a;color:#ff8f87}
+  button:disabled{opacity:.5;cursor:default}
+  main{padding:12px 14px 60px;max-width:1100px;margin:0 auto}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:12px}
+  .tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .tile .k{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+  .tile .v{font-size:20px;font-weight:650;margin-top:2px;font-variant-numeric:tabular-nums}
+  .tile .s{font-size:11px;color:var(--mut)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px}
+  .card h2{font-size:13px;margin:0 0 8px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+  .tl{display:flex;align-items:flex-end;gap:2px;height:64px}
+  .tl .b{flex:1;position:relative;height:64px;min-width:2px}
+  .tl .l,.tl .p{position:absolute;left:0;right:0;bottom:0;border-radius:2px 2px 0 0}
+  .tl .l{background:#2a3443}
+  .tl .p{background:var(--ok);z-index:1}
+  .tabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:10px;scrollbar-width:none}
+  .tabs button.on{background:#182235;border-color:#2a3b55;color:#fff}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+  .cand{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:pointer}
+  .cand.pass{border-left:3px solid var(--ok)}.cand.drop{border-left:3px solid #3a4452}
+  .cand .top{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+  .cand .sym{font-weight:650;font-size:15px}
+  .cand .meta{color:var(--mut);font-size:12px;margin-top:3px;display:flex;flex-wrap:wrap;gap:4px 10px}
+  .cand .reason{font-family:var(--mono);font-size:11px;color:var(--mut);margin-top:4px;word-break:break-all}
+  .cand .reason.bad{color:#ff8f87}
+  .detail{display:none;margin-top:10px;border-top:1px solid var(--line);padding-top:10px}
+  .cand.open .detail{display:block}
+  .gates{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px 10px;font-size:12px;font-family:var(--mono)}
+  .g.ok{color:#7ee29a}.g.bad{color:#ff8f87}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{text-align:left;padding:6px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  td.mono,.mono{font-family:var(--mono);font-size:11px;word-break:break-all}
+  .frame{font-family:var(--mono);font-size:11px;padding:6px 0;border-bottom:1px solid var(--line);word-break:break-all;color:var(--mut)}
+  .frame b{color:var(--txt)}
+  input,select{font:inherit;padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:#0b0f14;color:var(--txt)}
+  .muted{color:var(--mut)}
+  .empty{color:var(--mut);padding:18px;text-align:center}
+  a{color:#79b8ff;text-decoration:none}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12px;font-family:var(--mono)}
+  .kv div:nth-child(odd){color:var(--mut)}
+  @media (max-width:600px){.tile .v{font-size:17px}main{padding:10px 10px 60px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>TheTradoor Agent <span class="muted" id="ver"></span></h1>
+  <span class="pill" id="p-mode">mode <b>…</b></span>
+  <span class="pill" id="p-run">…</span>
+  <span class="pill" id="p-ws">ws …</span>
+  <span class="pill" id="p-gmgn">gmgn …</span>
+  <span class="pill" id="p-up">up <b>…</b></span>
+  <span class="spacer"></span>
+  <button id="btn-pause" class="danger" onclick="act('pause')">pause</button>
+  <button id="btn-resume" class="primary" onclick="act('resume')" style="display:none">resume</button>
+  <span class="pill" id="p-upd">…</span>
+</header>
+<main>
+  <div class="tiles" id="tiles"></div>
+  <div class="card"><h2>120 menit terakhir · <span class="muted">abu = launch · hijau = lolos hard gates</span></h2><div class="tl" id="tl"></div></div>
+  <div class="tabs">
+    <button class="on" data-tab="cands">kandidat</button>
+    <button data-tab="watch">watchlist <span id="n-watch" class="muted"></span></button>
+    <button data-tab="frames">frames WS</button>
+    <button data-tab="params">params</button>
+    <button data-tab="trades">trades</button>
+    <button data-tab="diag">diagnostik</button>
+  </div>
+  <section id="tab-cands">
+    <div class="row">
+      <select id="f-lane"><option value="screened">lolos saja</option><option value="all">semua</option><option value="drop">gagal saja</option></select>
+      <select id="f-min"><option value="60">1 jam</option><option value="360">6 jam</option><option value="1440">24 jam</option></select>
+      <span class="muted" id="c-count"></span>
+    </div>
+    <div id="cands"></div>
+  </section>
+  <section id="tab-watch" style="display:none"><div class="card" id="watch"></div></section>
+  <section id="tab-frames" style="display:none"><div class="card"><div class="row" id="kinds"></div><div id="frames"></div></div></section>
+  <section id="tab-params" style="display:none">
+    <div class="card"><h2>override aktif</h2><div id="overrides"></div>
+      <div class="row" style="margin-top:10px"><input id="pk" placeholder="key, misal gate_max_top10" style="flex:1;min-width:160px"><input id="pv" placeholder="value" style="width:110px"><button class="primary" onclick="setParam()">set</button></div>
+      <div class="muted" style="font-size:12px">Override kebaca agent dalam ≤10 detik. Kosongkan value buat hapus override.</div>
+    </div>
+    <div class="card"><h2>nilai efektif (setting ± override)</h2><div id="effective"></div></div>
+  </section>
+  <section id="tab-trades" style="display:none"><div class="card" id="trades"></div></section>
+  <section id="tab-diag" style="display:none"><div class="card" id="diag"></div></section>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+let status=null, tab='cands', openId=null, timer=null;
+const fmtUsd=v=>v==null?'n/a':(v>=1e6?'$'+(v/1e6).toFixed(2)+'M':v>=1e3?'$'+(v/1e3).toFixed(1)+'k':'$'+Math.round(v));
+const pct=v=>v==null?'n/a':(v*100).toFixed(v<0.1?1:0)+'%';
+const age=s=>s==null?'':s<60?s+'s':s<3600?Math.floor(s/60)+'m':Math.floor(s/3600)+'h'+Math.floor(s%3600/60)+'m';
+const up=s=>{const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return (d?d+'d ':'')+(h?h+'h ':'')+m+'m'};
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function api(p,opt){const r=await fetch(p,Object.assign({cache:'no-store'},opt||{}));if(r.status===401){location.href='/';return null}return r.json()}
+
+function pill(id,text,cls){const e=$(id);e.innerHTML=text;e.className='pill'+(cls?' '+cls:'')}
+function tile(k,v,s){return `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div>${s?`<div class="s">${s}</div>`:''}</div>`}
+
+async function refreshStatus(){
+  const s=await api('/api/status'); if(!s) return; status=s;
+  $('#ver').textContent='v'+s.version;
+  pill('#p-mode',`mode <b>${s.mode}</b>`, s.mode==='live'?'bad':s.mode==='confirm'?'warn':'');
+  pill('#p-run', s.kill_requested?'🛑 killed':s.paused?'⏸ paused':'▶ running', s.kill_requested?'bad':s.paused?'warn':'ok');
+  const w=s.ws; pill('#p-ws', w? (w.connected?`ws <b>on</b>${w.last_message_age_sec!=null?' · '+w.last_message_age_sec+'s':''}`:'ws <b>off</b>') : 'ws n/a', w&&w.connected?(w.last_message_age_sec>120?'warn':'ok'):'bad');
+  const g=s.gmgn; pill('#p-gmgn', g? (g.cooldown_sec?`gmgn <b>cooldown ${g.cooldown_sec}s</b>`:`gmgn <b>${g.requests}</b> req · ${g.errors} err`) : 'gmgn <b>off</b>', g?(g.cooldown_sec?'warn':g.errors&&g.requests&&g.errors/g.requests>0.3?'bad':'ok'):'bad');
+  pill('#p-up',`up <b>${up(s.uptime_sec)}</b>`);
+  $('#p-upd').textContent=new Date().toLocaleTimeString();
+  $('#btn-pause').style.display=s.paused?'none':'';$('#btn-resume').style.display=s.paused?'':'none';
+  const c=s.counters||{};
+  $('#tiles').innerHTML=[
+    tile('launches',c['ws.tokens_new']||0,`${c['ws.migrations']||0} migrasi`),
+    tile('cheap drop',c['screen.cheap_drop']||0,'tanpa API'),
+    tile('watching',c['screen.watchlist']||0,`${c['screen.watched']||0} total masuk`),
+    tile('lolos',c['screen.pass']||0,'hard gates'),
+    tile('gagal',c['screen.fail']||0,`${c['screen.evict.structural']||0} dibuang struktural`),
+    tile('gmgn weight',g?g.weight_used:'-',g?`budget ${g.budget_per_sec}/s · cache ${g.cache_hits} · 429 ×${g.rate_limited}`:''),
+    tile('posisi',`${s.open_positions}`,`pnl hari ini ${(s.pnl_today_sol>=0?'+':'')+s.pnl_today_sol.toFixed(4)} SOL`),
+  ].join('');
+  $('#n-watch').textContent=(s.watchlist||[]).length?`(${s.watchlist.length})`:'';
+  if(tab==='watch') renderWatch(); if(tab==='params') renderParams(); if(tab==='diag') renderDiag();
+}
+
+async function refreshTimeline(){
+  const t=await api('/api/timeline?minutes=120'); if(!t) return;
+  const mx=Math.max(1,...t.points.map(p=>Math.max(p.launches,p.screened)));
+  const h=v=>v?Math.max(2,Math.round(v/mx*60)):0;
+  $('#tl').innerHTML=t.points.map(p=>`<div class="b" title="${new Date(p.m*1000).toLocaleTimeString()} · ${p.launches} launch · ${p.screened} lolos · ${p.drop} gagal"><div class="l" style="height:${h(p.launches)}px"></div><div class="p" style="height:${h(p.screened)}px"></div></div>`).join('');
+}
+
+async function refreshCands(){
+  const lane=$('#f-lane').value, min=$('#f-min').value;
+  const d=await api(`/api/candidates?lane=${lane}&minutes=${min}&limit=300`); if(!d) return;
+  // one card per mint (latest row), but keep count of rows
+  const seen=new Map(); for(const r of d.rows){ if(!seen.has(r.mint)) seen.set(r.mint,r); }
+  $('#c-count').textContent=`${seen.size} token · ${d.rows.length} cek`;
+  const rows=[...seen.values()];
+  if(!rows.length){$('#cands').innerHTML='<div class="empty">belum ada. Kalau WS on dan launches naik tapi ini kosong lama, longgarin GATE_* di tab params.</div>';return}
+  $('#cands').innerHTML=rows.map(r=>`
+   <div class="cand ${r.lane==='screened'?'pass':'drop'} ${openId===r.id?'open':''}" data-id="${r.id}" onclick="toggle(${r.id},this)">
+    <div class="top"><span class="sym">$${esc(r.symbol||r.mint.slice(0,6))} <span class="muted" style="font-weight:400;font-size:12px">${age(r.age_sec)}${r.migrated?' · migrated':r.progress!=null?' · bond '+pct(r.progress):''}</span></span><span class="muted" style="font-size:12px">${new Date(r.ts*1000).toLocaleTimeString()}</span></div>
+    <div class="meta"><span>mcap <b>${fmtUsd(r.mcap_usd)}</b></span><span>liq ${fmtUsd(r.liquidity_usd)}</span><span>holders ${r.holders??'n/a'}</span><span>top10 ${pct(r.top10)}</span><span>dev ${pct(r.dev)}</span><span>bundler ${pct(r.bundler)}</span><span>insider ${pct(r.insider)}</span><span>snipers ${r.snipers??'n/a'}</span><span>smart ${r.smart??0}/${r.renowned??0}</span><span>1m ${r.buys_1m??0}b/${r.sells_1m??0}s</span><span>5m ${r.buys_5m??0}b/${r.sells_5m??0}s</span></div>
+    <div class="reason ${r.lane==='screened'?'':'bad'}">${esc(r.reason)}</div>
+    <div class="detail" id="d-${r.id}">${openId===r.id?'':'…'}</div>
+   </div>`).join('');
+  if(openId) loadDetail(openId);
+}
+async function toggle(id,el){
+  if(openId===id){openId=null;el.classList.remove('open');return}
+  document.querySelectorAll('.cand.open').forEach(e=>e.classList.remove('open'));
+  openId=id; el.classList.add('open'); await loadDetail(id);
+}
+async function loadDetail(id){
+  const box=$('#d-'+id); if(!box) return;
+  const d=await api('/api/candidate/'+id); if(!d) return;
+  const gates=(d.gates||[]).map(g=>`<div class="g ${g.passed?'ok':'bad'}">${g.passed?'✓':'✗'} ${esc(g.name)} <span class="muted">${esc(g.detail||'')}</span></div>`).join('');
+  const b=d.breakdown||{}; const keys=Object.keys(b).filter(k=>k!=='symbol').sort();
+  box.innerHTML=`<div style="margin-bottom:8px"><a href="https://gmgn.ai/sol/token/${d.mint}" target="_blank" rel="noopener">gmgn ↗</a> · <a href="https://pump.fun/coin/${d.mint}" target="_blank" rel="noopener">pump.fun ↗</a> · <span class="mono">${d.mint}</span></div>
+   <div class="gates">${gates}</div><div class="kv" style="margin-top:10px">${keys.map(k=>`<div>${esc(k)}</div><div>${esc(typeof b[k]==='number'&&!Number.isInteger(b[k])?b[k].toFixed(6).replace(/0+$/,'').replace(/\.$/,''):b[k])}</div>`).join('')}</div>`;
+}
+
+function renderWatch(){
+  const w=status?.watchlist||[];
+  $('#watch').innerHTML = w.length? `<table><thead><tr><th>token</th><th>umur</th><th>cek</th><th>lolos</th><th>terakhir gagal</th><th>mcap</th><th>holders</th><th>cek lagi</th></tr></thead><tbody>${w.map(e=>`<tr><td><b>$${esc(e.symbol||e.mint.slice(0,6))}</b>${e.migrated?' <span class="muted">migrated</span>':''}<div class="mono muted">${e.mint.slice(0,10)}…</div></td><td>${age(e.age_sec)}</td><td>${e.checks}</td><td>${e.passes}</td><td class="mono">${esc((e.last_failed||[]).join(',')||(e.checks?'—':'belum dicek'))}</td><td>${fmtUsd(e.mcap_usd)}</td><td>${e.holders??''}</td><td>${e.next_check_sec}s</td></tr>`).join('')}</tbody></table>` : '<div class="empty">watchlist kosong</div>';
+}
+
+async function refreshFrames(){
+  const d=await api('/api/frames'); if(!d) return;
+  const kinds={}; d.frames.forEach(f=>kinds[f.kind]=(kinds[f.kind]||0)+1);
+  $('#kinds').innerHTML=Object.entries(kinds).map(([k,v])=>`<span class="pill ${k==='unknown'?'warn':''}">${k} <b>${v}</b></span>`).join('')||'<span class="muted">belum ada frame</span>';
+  $('#frames').innerHTML=d.frames.map(f=>`<div class="frame"><b>${esc(f.kind)}</b> ${new Date(f.ts*1000).toLocaleTimeString()} · ${esc(f.raw)}</div>`).join('')||'<div class="empty">kosong. Cek pill ws di atas dan tab diagnostik.</div>';
+}
+
+function renderParams(){
+  const p=status?.params||{}, s=status?.settings||{};
+  const keys=Object.keys(p).filter(k=>k!=='web_token');
+  $('#overrides').innerHTML = keys.length? `<table><tbody>${keys.map(k=>`<tr><td class="mono">${esc(k)}</td><td class="mono">${esc(JSON.stringify(p[k]))}</td><td style="text-align:right"><button onclick="delParam('${esc(k)}')">hapus</button></td></tr>`).join('')}</tbody></table>` : '<div class="muted">belum ada override</div>';
+  $('#effective').innerHTML = `<table><tbody>${Object.keys(s).sort().map(k=>{const ov=k in p; return `<tr><td class="mono">${esc(k)}</td><td class="mono" style="${ov?'color:#f2c14e':''}">${esc(ov?JSON.stringify(p[k]):JSON.stringify(s[k]))}${ov?' <span class="muted">(override)</span>':''}</td><td style="text-align:right"><button onclick="$('#pk').value='${esc(k)}';$('#pv').value='${esc(JSON.stringify(ov?p[k]:s[k]))}';$('#pv').focus()">ubah</button></td></tr>`}).join('')}</tbody></table>`;
+}
+async function setParam(){
+  const key=$('#pk').value.trim(), value=$('#pv').value.trim(); if(!key) return;
+  const r=await api('/api/param',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({key,value})});
+  if(r&&r.ok){$('#pk').value='';$('#pv').value='';await refreshStatus()}
+}
+async function delParam(k){await api('/api/param',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({key:k,value:''})});await refreshStatus()}
+async function act(a){await api('/api/'+a,{method:'POST'});await refreshStatus()}
+
+async function refreshTrades(){
+  const d=await api('/api/trades'); if(!d) return;
+  const pos=d.positions||[], tr=d.trades||[];
+  $('#trades').innerHTML = (pos.length||tr.length)? `<h2>posisi terbuka</h2>${pos.length?`<table><thead><tr><th>mint</th><th>lane</th><th>entry</th><th>size</th><th>sejak</th></tr></thead><tbody>${pos.map(p=>`<tr><td class="mono">${p.mint.slice(0,10)}…</td><td>${p.lane}</td><td>${p.entry_price_sol}</td><td>${p.size_sol}</td><td>${age(Math.floor(status.now-p.opened_at))}</td></tr>`).join('')}</tbody></table>`:'<div class="muted">tidak ada</div>'}<h2 style="margin-top:12px">trade selesai</h2>${tr.length?`<table><thead><tr><th>mint</th><th>lane</th><th>pnl</th><th>%</th><th>hold</th><th>exit</th></tr></thead><tbody>${tr.map(t=>`<tr><td class="mono">${t.mint.slice(0,10)}…</td><td>${t.lane}</td><td style="color:${t.pnl_sol>=0?'#7ee29a':'#ff8f87'}">${(t.pnl_sol>=0?'+':'')+Number(t.pnl_sol).toFixed(4)}</td><td>${t.pnl_pct==null?'':Number(t.pnl_pct).toFixed(1)}</td><td>${age(Math.floor(t.holding_sec||0))}</td><td class="mono">${esc(t.exit_reason||'')}</td></tr>`).join('')}</tbody></table>`:'<div class="muted">belum ada</div>'}` : '<div class="empty">belum ada trade. Paper trading mulai di fase 2; fase 1 cuma screening.</div>';
+}
+
+function renderDiag(){
+  const s=status; if(!s) return; const w=s.ws||{}, g=s.gmgn||{};
+  $('#diag').innerHTML=`<div class="kv">
+   <div>ws connected</div><div>${w.connected}</div>
+   <div>ws last message</div><div>${w.last_message_age_sec==null?'never':w.last_message_age_sec+'s ago'}</div>
+   <div>ws last error</div><div>${esc(w.last_error||'-')}</div>
+   <div>ws frame kinds (recent)</div><div>${esc(JSON.stringify(w.kinds_recent||{}))}</div>
+   <div>ws trade subs</div><div>${w.trade_subs??0}</div>
+   <div>gmgn requests</div><div>${g.requests??'-'} (cache ${g.cache_hits??0}, waited ${g.waited_sec??0}s)</div>
+   <div>gmgn by path</div><div>${esc(JSON.stringify(g.by_path||{}))}</div>
+   <div>gmgn errors</div><div>${g.errors??'-'} · 429 ×${g.rate_limited??0}${g.cooldown_sec?' · COOLDOWN '+g.cooldown_sec+'s':''}</div>
+   <div>gmgn last error</div><div>${esc(g.last_error||'-')}</div>
+   <div>heartbeats</div><div>${esc(JSON.stringify(s.heartbeats_age_sec))}</div>
+   <div>counters</div><div>${esc(JSON.stringify(s.counters))}</div>
+   <div>candidates 24h</div><div>${esc(JSON.stringify(s.candidates_24h))}</div>
+  </div>
+  <div class="muted" style="margin-top:10px;font-size:12px">Sehat kalau: ws connected + frame kinds punya "create", gmgn errors kecil dan last error kosong, launches naik tiap menit, watching &gt; 0 setelah ~1 menit.</div>`;
+}
+
+async function refreshTab(){
+  if(tab==='cands') await refreshCands(); else if(tab==='frames') await refreshFrames(); else if(tab==='trades') await refreshTrades();
+  else if(tab==='watch') renderWatch(); else if(tab==='params') renderParams(); else if(tab==='diag') renderDiag();
+}
+async function tick(){ if(document.hidden) return; try{ await refreshStatus(); await refreshTimeline(); await refreshTab(); }catch(e){ console.error(e); $('#p-upd').textContent='error '+e.message } }
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');tab=b.dataset.tab;document.querySelectorAll('main section').forEach(s=>s.style.display=s.id==='tab-'+tab?'':'none');refreshTab()});
+$('#f-lane').onchange=$('#f-min').onchange=refreshCands;
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)tick()});
+tick(); timer=setInterval(tick,5000);
+</script>
+</body>
+</html>

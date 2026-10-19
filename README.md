@@ -1,0 +1,140 @@
+# TheTradoor Agent
+
+Solana trading agent. Hot path deterministik (ingest → hard gates → scoring → risk gate → eksekusi),
+LLM cuma di zona abu-abu dengan timeout ketat, dan slow loop buat autopsy + usulan param.
+
+Status: **Fase 1** (ingest + screener). Belum ada scoring, belum ada trading. Yang jalan:
+supervisor + watchdog, SQLite, Telegram ops, PumpPortal ingest (launch + migrasi), GMGN enrichment,
+cheap gates + hard gates, tabel `candidates` terisi, alert Telegram untuk yang lolos.
+
+## Alur fase 1
+
+```
+PumpPortal WS (create/migrate, gratis)
+   -> cheap gates (dev buy SOL, dev % supply, nama)          [0 API cost]
+   -> watchlist (cek pertama +20s, lalu tiap 30s, maks 30 menit)
+   -> GMGN /v1/token/info + /v1/token/security (weight 2 per cek, cache 15s)
+   -> hard gates (holders, liq, mcap, top10, dev, bundler, rat, insider, snipers, rug_ratio, renounced, wash)
+   -> candidates (lane=screened | drop, breakdown_json = semua metrik GMGN, gates_json = hasil per gate)
+   -> TOPIC_CANDIDATE (dikonsumsi scoring di fase 2) + alert Telegram (maks 20/jam)
+```
+
+Token yang gagal gate struktural (bundler, insider, rug_ratio, renounced, dev, rat, wash) dua kali berturut-turut
+dibuang dari watchlist biar weight gak kebuang. Budget: 150 token x 2 weight / 30s = 10 weight/s dari 50.
+
+Semua threshold `GATE_*`, `CHEAP_*`, `SCREEN_*` bisa dioverride live tanpa restart: `/set gate_max_top10 0.25`
+(dibaca ulang tiap 10 detik). `/params` buat lihat, `/watch` buat lihat kandidat 1 jam terakhir.
+
+## Struktur
+
+```
+tradoor_agent/
+  __main__.py      entry: python -m tradoor_agent [--check|--smoke]
+  config.py        semua setting dari env / .env
+  supervisor.py    boot, restart komponen yang crash, watchdog, KILL file
+  component.py     Context + base class Component
+  state.py         state runtime (paused, kill, heartbeats, counters)
+  bus.py           pub/sub in-process (topik: token.new, trade, candidate, decision, order, position, alert)
+  db.py            SQLite (WAL) + schema semua fase
+  models.py        dataclass yang dipakai semua stage
+  housekeeper.py   prune events, daily stats
+  params.py        override param live dari tabel params (/set)
+  screener.py      watchlist + GMGN snapshot + hard gates -> candidates
+  ingest/pumpportal.py  WS client (reconnect, backoff, parser create/buy/sell/migrate)
+  ingest/gmgn.py        OpenAPI client (X-APIKEY, weight bucket, cache, cooldown saat 429) + normalisasi snapshot
+  gates/rules.py        cheap_gates + hard_gates (pure functions)
+  ops/telegram.py  remote control + alert
+  ops/web.py + ops/static/dashboard.html   dashboard web (API JSON + halaman)
+  scoring/ risk/ llm_review/ execution/ positions/ slow_loop/   (fase berikutnya)
+tests/test_phase1.py    replay test tanpa network: python -m tests.test_phase1
+tests/test_dashboard.py tes semua route dashboard: python -m tests.test_dashboard
+deploy/
+  install.sh       setup venv + systemd di VPS, aman dijalankan ulang
+  tradoor-agent.service
+```
+
+## Setup di VPS (Ubuntu, Python 3.10+)
+
+```bash
+# 1. taruh folder ini di /opt/tradoor-agent (scp dari laptop)
+cd /opt/tradoor-agent
+bash deploy/install.sh        # bikin .venv, install deps, bikin .env dari contoh
+
+# 2. isi .env (minimal TELEGRAM_BOT_TOKEN + TELEGRAM_OWNER_IDS biar bisa dikontrol)
+nano .env
+
+# 3. jalankan lagi: check -> smoke -> pasang systemd -> start
+bash deploy/install.sh
+
+# log
+journalctl -u tradoor-agent -f
+```
+
+Manual tanpa systemd:
+
+```bash
+.venv/bin/python -m tradoor_agent --check          # validasi config
+.venv/bin/python -m tradoor_agent --smoke          # boot 3 detik di temp dir
+.venv/bin/python -m tradoor_agent --check-gmgn     # tes key GMGN + mapping field
+.venv/bin/python -m tradoor_agent --probe-ws 20    # lihat 20 frame mentah PumpPortal
+.venv/bin/python -m tradoor_agent --dump-gmgn MINT # payload mentah GMGN untuk satu mint
+.venv/bin/python -m tradoor_agent                  # jalan
+```
+
+Catatan PumpPortal: satu koneksi saja per API key. Jangan jalankan `--probe-ws` barengan service yang lagi hidup;
+stop service dulu (`systemctl stop tradoor-agent`) atau pakai key lain.
+
+## Mode
+
+| MODE      | Wallet | Tx dikirim | Catatan |
+|-----------|--------|------------|---------|
+| `dry_run` | tidak  | tidak      | default. PnL virtual pakai harga nyata |
+| `confirm` | ya     | setelah approve di Telegram | buat transisi |
+| `live`    | ya     | ya         | butuh `I_UNDERSTAND_LIVE_TRADING=yes` |
+
+## Dashboard web
+
+Agent nyalain web kecil di port `WEB_PORT` (default 8787). Buka `http://IP-VPS:8787/?token=TOKEN`.
+Token: isi `WEB_TOKEN` di `.env`, atau biarkan kosong dan agent bikin sendiri sekali lalu kirim link-nya ke Telegram saat start
+(atau lihat `journalctl -u tradoor-agent | grep dashboard`). Setelah sekali buka dengan `?token=`, cookie nyimpen 30 hari.
+
+Isi: pill status (mode, running/paused, WS, GMGN), tile counter, timeline 120 menit, tab kandidat (klik buat lihat tiap gate +
+semua metrik GMGN), watchlist, frame WS mentah, params (ubah threshold live), trades (fase 2+), diagnostik.
+Tombol pause/resume ada di header. Kill tetap cuma lewat Telegram atau file `data/KILL`.
+
+Berbagi VPS dengan bot lain (misal The Watchers): aman. Unit systemd dibatasi `MemoryMax=1G`, `CPUQuota=70%`, `Nice=5`.
+Yang harus beda: token bot Telegram (bikin bot baru), dan kalau GMGN key-nya sama, set `GMGN_BUDGET_FRACTION=0.7`
+biar sisa weight-nya cukup buat bot satunya.
+
+Firewall: kalau `ufw status` aktif, buka portnya: `ufw allow 8787/tcp`. Kalau mau lebih aman, set `WEB_HOST=127.0.0.1`
+dan akses lewat SSH tunnel: `ssh -L 8787:127.0.0.1:8787 root@IP-VPS` lalu buka `http://127.0.0.1:8787`.
+
+## Kontrol
+
+Telegram (owner saja): `/status` `/watch` `/pause` `/resume` `/params` `/set K V` `/kill` (lalu `/kill confirm`) `/help`
+
+Kill switch tanpa Telegram (misal bot Telegram-nya mati):
+
+```bash
+touch /opt/tradoor-agent/data/KILL      # watchdog lihat dalam <= 10 detik, agent berhenti
+rm /opt/tradoor-agent/data/KILL && systemctl restart tradoor-agent   # nyalakan lagi
+```
+
+Selama file `data/KILL` ada, agent menolak start (exit code 3) dan systemd tidak me-restart.
+`/pause` beda: agent tetap jalan dan posisi tetap di-manage, cuma gak buka entry baru.
+
+## Data
+
+- `data/agent.sqlite` : semua tabel (tokens, events, candidates, llm_reviews, decisions, orders, fills, positions, trades, params, daily_stats)
+- `data/logs/agent.log` : rotasi harian, simpan 14 hari
+- Hari untuk daily stats / loss cap mengikuti `TIMEZONE` (default Asia/Jakarta)
+
+## Roadmap
+
+0. Fondasi ✅
+1. Ingest (PumpPortal WS) + GMGN enrichment + hard gates → candidates ✅
+2. Scoring + routing + risk gate + llm_review → paper trade
+3. Eksekusi (PumpPortal local tx): simulate → sign → send → confirm → reconcile; mode confirm dulu
+4. Position manager + emergency exit
+5. Slow loop: autopsy, LLM-lane vs rule-only, usulan param lewat backtest gate
+6. Hardening: watchdog lanjutan, backup, alert policy

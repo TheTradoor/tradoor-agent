@@ -1,0 +1,26 @@
+[Unit]
+Description=TheTradoor Agent (Solana trading agent)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/tradoor-agent
+EnvironmentFile=/opt/tradoor-agent/.env
+ExecStart=/opt/tradoor-agent/.venv/bin/python -m tradoor_agent
+Restart=always
+RestartSec=5
+# exit code 3 = KILL file present; jangan restart loop tanpa henti
+RestartPreventExitStatus=3
+KillSignal=SIGTERM
+TimeoutStopSec=20
+# pagar sumber daya: agent gak boleh bikin service lain di VPS ini kelaparan
+MemoryMax=1G
+CPUQuota=70%
+Nice=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
