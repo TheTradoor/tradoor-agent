@@ -79,7 +79,7 @@ async def main() -> None:
             assert tr == {"positions": [], "trades": []}
             act = await (await http.get(f"{BASE}/api/activity")).json()
             kinds = {i["kind"] for i in act["items"]}
-            assert {"watch", "pass", "fail", "drop"} <= kinds, kinds
+            assert {"watch", "pass", "fail", "drop"} <= kinds or {"watch", "pass", "grow", "drop"} <= kinds, kinds
             assert any(i.get("candidate_id") for i in act["items"] if i["kind"] == "pass")
             eq = await (await http.get(f"{BASE}/api/equity")).json()
             assert eq["start_sol"] == settings.paper_start_sol and eq["points"] == []

@@ -59,7 +59,7 @@
   .log{flex:1;min-height:150px;max-height:240px;overflow:auto;font-size:11.5px}
   .log div{padding:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink2)}
   .log div.k-pass{color:var(--ink);font-weight:600}
-  .log div.k-fail,.log div.k-drop{color:var(--mut)}
+  .log div.k-fail{color:var(--ink2)}.log div.k-drop,.log div.k-grow{color:var(--mut)}
   .log div.k-error{color:var(--bad)}.log div.k-warn{color:var(--warn)}.log div.k-trade{color:var(--ok);font-weight:600}
   .log .t{color:var(--mut);margin-right:6px}
   .log .a{letter-spacing:.08em;margin-right:6px}
@@ -247,8 +247,9 @@ function renderCoins(s){
   if(!shown.length){$('#coins').innerHTML='<div class="empty-card">belum ada token di watchlist · nunggu launch yang lolos cheap gates</div>';return}
   $('#coins').innerHTML=shown.map((e,i)=>{
     const failing=e.last_failed&&e.last_failed.length;
-    const cls=e.checks===0?'wait':failing?'fail':'pass';
-    const st=e.checks===0?`check ${e.next_check_sec}s`:failing?esc(e.last_failed[0])+(e.last_failed.length>1?' +'+(e.last_failed.length-1):''):`pass ×${e.passes}`;
+    const growOnly=failing&&e.last_failed.every(x=>['holders','liquidity','mcap_min'].includes(x));
+    const cls=e.checks===0?'wait':growOnly?'wait':failing?'fail':'pass';
+    const st=e.checks===0?`check ${e.next_check_sec}s`:growOnly?`growing · ${e.next_check_sec}s`:failing?esc(e.last_failed[0])+(e.last_failed.length>1?' +'+(e.last_failed.length-1):''):`pass ×${e.passes}`;
     const on=e.last_check_age_sec!=null&&e.last_check_age_sec<3;
     const prog=e.migrated?100:(e.progress!=null?Math.round(e.progress*100):null);
     return `<div class="coin ${cls} ${e.migrated?'mig':''} ${on?'on':''}" ${e.candidate_id?`onclick="openCand(${e.candidate_id})"`:''}>

@@ -19,6 +19,8 @@ from .models import Candidate, Lane, TokenEvent, TokenSnapshot
 
 # failing one of these twice in a row means the token's structure is bad; stop spending weight on it
 STRUCTURAL = {"renounced_mint", "renounced_freeze", "rug_ratio", "bundler", "insider", "wash_trading", "dev_hold", "rat_trader"}
+# gates a healthy token simply has not reached yet; failing only these is "not yet", not "bad"
+GROWTH = {"holders", "liquidity", "mcap_min"}
 CHECKS_PER_TICK = 8
 
 
@@ -173,7 +175,7 @@ class Screener(Component):
         e.last_candidate_id = cand.id
 
         sym = snap.symbol or e.evt.symbol or snap.mint[:6]
-        mc = f"${(snap.mcap_usd or 0) / 1000:.1f}k"
+        mc = f"${snap.mcap_usd / 1000:.1f}k" if snap.mcap_usd else "mcap n/a"
         if passed:
             e.passes += 1
             self.ctx.state.bump("screen.pass")
@@ -186,7 +188,12 @@ class Screener(Component):
                 self.ctx.bus.alert(self._card(snap, e, age), "info")
         else:
             self.ctx.state.bump("screen.fail")
-            self.ctx.state.log("gates", "fail", f"FAIL ${sym} · {mc} · {','.join(bad)}", snap.mint, candidate_id=cand.id)
+            # growth-only fails (too young to have holders / liquidity / mcap yet) are expected early on:
+            # log them quietly as GROW so the feed highlights the fails that actually matter
+            if set(bad) <= GROWTH:
+                self.ctx.state.log("gates", "grow", f"GROW ${sym} · {mc} · {snap.holder_count or 0}h · nunggu {','.join(bad)}", snap.mint, candidate_id=cand.id)
+            else:
+                self.ctx.state.log("gates", "fail", f"FAIL ${sym} · {mc} · {','.join(bad)}", snap.mint, candidate_id=cand.id)
 
     # ------------------------------------------------------------ housekeeping
 
