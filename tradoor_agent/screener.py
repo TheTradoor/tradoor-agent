@@ -34,6 +34,8 @@ class WatchEntry:
     alerted: bool = False
     last_snap: TokenSnapshot | None = None
     last_failed: list[str] = field(default_factory=list)
+    last_check: float = 0.0
+    last_candidate_id: int | None = None
 
 
 class Screener(Component):
@@ -141,6 +143,7 @@ class Screener(Component):
 
         e.checks += 1
         e.last_snap = snap
+        e.last_check = time.time()
         gates = hard_gates(
             snap,
             min_holders=p("gate_min_holders"), min_liquidity_usd=p("gate_min_liquidity_usd"),
@@ -167,6 +170,7 @@ class Screener(Component):
         cand.breakdown["symbol"] = snap.symbol or e.evt.symbol
         cand.breakdown["migrated"] = e.migrated
         cand.id = await self.ctx.db.insert_candidate(cand)
+        e.last_candidate_id = cand.id
 
         sym = snap.symbol or e.evt.symbol or snap.mint[:6]
         mc = f"${(snap.mcap_usd or 0) / 1000:.1f}k"

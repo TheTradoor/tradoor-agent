@@ -19,11 +19,11 @@
   button.quiet{border-color:var(--line);color:var(--mut)}
   .wrap{max-width:1180px;margin:0 auto;padding:14px 16px 40px}
   /* header */
-  header{display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding:4px 2px 12px}
+  header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:4px 2px 12px}
   .brand{font-size:19px;font-weight:700;letter-spacing:.02em}
   .brand .dots{color:var(--mut);margin:0 6px;font-weight:400}
   .brand .mode{font-weight:500;letter-spacing:.16em;text-transform:uppercase;color:var(--ink2);font-size:15px}
-  .stat{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink2);white-space:nowrap}
+  .stat{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink2);white-space:nowrap}
   .stat .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);margin-right:6px;vertical-align:middle;box-shadow:0 0 0 3px rgba(47,143,106,.15)}
   .stat.paused .dot{background:var(--warn);box-shadow:0 0 0 3px rgba(196,125,26,.18)}
   .stat.dead .dot{background:var(--bad);box-shadow:0 0 0 3px rgba(201,69,63,.18)}
@@ -54,7 +54,7 @@
   .chart .lbl{font:10px var(--mono);fill:var(--ink2);letter-spacing:.04em}
   .chart .lbl.muted{fill:var(--mut)}
   .chart .cur{font:12px var(--mono);fill:var(--ink);font-weight:700}
-  .chart .empty{position:absolute;inset:auto 12px 14px 12px;font-size:10.5px;color:var(--mut);letter-spacing:.06em;text-transform:uppercase}
+  .chart .empty{position:absolute;right:12px;top:30px;font-size:10px;color:var(--mut);letter-spacing:.06em;text-transform:uppercase}
   /* activity log */
   .log{flex:1;min-height:150px;max-height:240px;overflow:auto;font-size:11.5px}
   .log div{padding:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink2)}
@@ -73,18 +73,24 @@
   .ladder .sym{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .ladder .st{text-align:right;letter-spacing:.06em;font-size:10px;text-transform:uppercase}
   .ladder .st.pass{color:var(--ok)}.ladder .st.fail{color:var(--mut)}.ladder .st.wait{color:var(--mut)}
-  /* agents */
-  .agents{display:grid;grid-template-columns:repeat(7,1fr);gap:12px;margin-bottom:12px}
-  .agent{background:var(--panel);border:1px solid var(--line);border-top:2px solid var(--ac);padding:8px 10px 12px;text-align:center;position:relative;transition:box-shadow .25s,border-color .25s;min-height:118px}
-  .agent .n{position:absolute;left:10px;top:7px;font-size:9.5px;color:var(--mut);letter-spacing:.1em}
-  .agent .ic{width:40px;height:40px;margin:18px auto 8px;border-radius:9px;background:var(--ac);display:grid;place-items:center;color:#fff;opacity:.9;transition:transform .25s,box-shadow .25s}
-  .agent .ic svg{width:18px;height:18px;fill:none;stroke:#fff;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
-  .agent .nm{font-size:11px;letter-spacing:.18em;text-transform:uppercase;font-weight:600}
-  .agent .sub{font-size:9.5px;color:var(--mut);letter-spacing:.06em;margin-top:2px;min-height:12px}
-  .agent.on{border-color:var(--ac);box-shadow:0 0 0 1px var(--ac),0 0 28px -6px var(--ac)}
-  .agent.on .ic{transform:scale(1.08);box-shadow:0 0 22px -2px var(--ac)}
-  .agent.standby{opacity:.5}
-  .agent.standby .ic{background:#b9b6ac}
+  /* coins being scanned */
+  .coins-h{display:flex;justify-content:space-between;align-items:baseline;margin:2px 2px 6px;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);font-weight:600}
+  .coins-h span{color:var(--mut);font-weight:400;letter-spacing:.06em;text-transform:none}
+  .coins{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:12px}
+  .coin{background:var(--panel);border:1px solid var(--line);border-top:2px solid var(--ac,var(--line));padding:9px 11px 10px;position:relative;cursor:pointer;transition:box-shadow .25s,border-color .25s;min-height:132px}
+  .coin .n{position:absolute;left:10px;top:7px;font-size:9.5px;color:var(--mut);letter-spacing:.1em}
+  .coin .st{position:absolute;right:9px;top:7px;font-size:9px;letter-spacing:.12em;text-transform:uppercase;padding:2px 6px;border:1px solid var(--ac,var(--line));color:var(--ac,var(--mut));border-radius:2px;background:#fff}
+  .coin .sym{font-size:17px;font-weight:700;margin-top:18px;letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .coin .m{font-size:10.5px;color:var(--ink2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .coin .m b{color:var(--ink)}
+  .coin .m.mut{color:var(--mut)}
+  .coin .bar{height:3px;background:var(--line2);margin-top:7px;position:relative;overflow:hidden}
+  .coin .bar i{position:absolute;left:0;top:0;bottom:0;background:var(--ac,var(--mut))}
+  .coin .foot{display:flex;justify-content:space-between;font-size:9.5px;color:var(--mut);margin-top:5px;letter-spacing:.06em}
+  .coin.pass{--ac:var(--ok)}.coin.fail{--ac:#b9b6ac}.coin.wait{--ac:var(--warn)}.coin.mig{--ac:var(--c4)}
+  .coin.on{box-shadow:0 0 0 1px var(--ac),0 0 30px -6px var(--ac)}
+  .coin.fail .sym{color:var(--ink2)}
+  .coins .empty-card{grid-column:1/-1;border:1px dashed var(--line);padding:22px;text-align:center;color:var(--mut);font-size:11px;letter-spacing:.06em}
   /* bottom sections */
   details{background:var(--panel);border:1px solid var(--line);margin-bottom:10px}
   summary{cursor:pointer;padding:9px 12px;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);font-weight:600;list-style:none}
@@ -115,7 +121,7 @@
   .drawer h3{margin:0 0 10px;font-size:14px;display:flex;justify-content:space-between;align-items:center}
   @media (max-width:900px){
     .tiles{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}.chart{min-height:260px}.chart svg{height:230px}
-    .agents{display:flex;overflow-x:auto;gap:10px;padding-bottom:4px}.agent{min-width:118px}
+    .coins{display:flex;overflow-x:auto;gap:10px;padding-bottom:4px}.coin{min-width:168px;flex:0 0 auto}.coins .empty-card{min-width:100%}
     header{gap:10px}.brand{font-size:17px}.hide-m{display:none}
     .tile{min-height:96px;padding:10px 12px 8px}.tile .v{font-size:19px}.tile .s{padding-right:74px;font-size:10px}.tile svg{width:66px;height:26px;right:10px;bottom:8px}
     .ladder{min-height:0}.log{max-height:200px}
@@ -131,6 +137,8 @@
   <div class="stat hide-m" id="h-up">UPTIME 00:00:00</div>
   <div class="stat hide-m" id="h-cycle">CHECKS #0</div>
   <div class="stat hide-m" id="h-pid">PID –</div>
+  <div class="stat" id="h-ws">WS –</div>
+  <div class="stat hide-m" id="h-gmgn">GMGN –</div>
   <div class="sp"></div>
   <button id="btn-pause" onclick="act('pause')">pause</button>
   <button id="btn-resume" onclick="act('resume')" style="display:none">resume</button>
@@ -155,7 +163,8 @@
   </div>
 </div>
 
-<div class="agents" id="agents"></div>
+<div class="coins-h">Scanning <span id="coins-n"></span></div>
+<div class="coins" id="coins"></div>
 
 <details><summary>Candidates</summary><div>
   <div class="row">
@@ -189,17 +198,6 @@ const tm=ts=>new Date(ts*1000).toLocaleTimeString('en-GB',{hour12:false});
 let status=null, equity=null, timeline=null, openCid=null;
 async function api(p,opt){const r=await fetch(p,Object.assign({cache:'no-store'},opt||{}));if(r.status===401){location.href='/';return null}return r.json()}
 
-const AGENTS=[
-  {id:'ingest',name:'Ingest',sub:'pumpportal ws',c:'var(--c1)',icon:'<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 16 0M8 12a4 4 0 0 1 8 0M12 12v8"/></svg>'},
-  {id:'gates',name:'Gates',sub:'cheap + hard',c:'var(--c2)',icon:'<svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg>'},
-  {id:'gmgn',name:'GMGN',sub:'enrichment',c:'var(--c3)',icon:'<svg viewBox="0 0 24 24"><path d="M12 3l9 9-9 9-9-9z"/></svg>'},
-  {id:'scorer',name:'Scorer',sub:'phase 2',c:'var(--c4)',icon:'<svg viewBox="0 0 24 24"><path d="M12 4l8 16H4z"/></svg>',standby:true},
-  {id:'llm',name:'LLM',sub:'grey lane · phase 2',c:'var(--c5)',icon:'<svg viewBox="0 0 24 24"><circle cx="8" cy="12" r="1.6"/><circle cx="16" cy="12" r="1.6"/></svg>',standby:true},
-  {id:'risk',name:'Risk',sub:'phase 2',c:'var(--c6)',icon:'<svg viewBox="0 0 24 24"><path d="M12 3l8 4v6c0 4-3.5 7-8 8-4.5-1-8-4-8-8V7z"/></svg>',standby:true},
-  {id:'exec',name:'Exec',sub:'phase 3',c:'var(--c7)',icon:'<svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',standby:true},
-];
-$('#agents').innerHTML=AGENTS.map((a,i)=>`<div class="agent ${a.standby?'standby':''}" id="ag-${a.id}" style="--ac:${a.c}"><div class="n">${String(i+1).padStart(2,'0')}</div><div class="ic">${a.icon}</div><div class="nm">${a.name}</div><div class="sub">${a.sub}</div></div>`).join('');
-
 function spark(svgId,vals){
   const el=$(svgId); if(!el) return; const W=120,H=34;
   if(!vals||vals.length<2){ el.innerHTML=`<path d="M0 ${H-4} L${W} ${H-4}" style="opacity:.35"/>`; return; }
@@ -218,6 +216,11 @@ function renderHeader(s){
   $('#h-up').textContent='UPTIME '+hms(s.uptime_sec);
   const c=s.counters||{}; $('#h-cycle').textContent=`CHECKS #${(c['screen.pass']||0)+(c['screen.fail']||0)}`;
   $('#h-pid').textContent='PID '+s.pid;
+  const w=s.ws, g=s.gmgn;
+  $('#h-ws').textContent = w? (w.connected?`WS ON · ${s.counters['ws.tokens_new']||0} LAUNCHES`:'WS OFF') : 'WS –';
+  $('#h-ws').style.color = w&&w.connected?'':'var(--bad)';
+  $('#h-gmgn').textContent = g? (g.cooldown_sec?`GMGN COOLDOWN ${g.cooldown_sec}S`:`GMGN ${g.requests} REQ · ${g.errors} ERR`) : 'GMGN OFF';
+  $('#h-gmgn').style.color = g&&(g.cooldown_sec||(g.errors&&g.requests&&g.errors/g.requests>0.3))?'var(--warn)':'';
   $('#btn-pause').style.display=s.paused?'none':'';$('#btn-resume').style.display=s.paused?'':'none';
 }
 function renderTiles(s){
@@ -235,16 +238,27 @@ function renderTiles(s){
   if(equity){ const b=[equity.start_sol,...equity.points.map(p=>p.balance)]; spark('#sp-bal',b); spark('#sp-pnl',b.map(x=>x-equity.start_sol)); }
   if(timeline){ spark('#sp-launch',timeline.points.slice(-60).map(p=>p.launches)); }
 }
-function renderAgents(s){
-  const la=s.last_active||{}; const now=0;
-  for(const a of AGENTS){
-    const el=$('#ag-'+a.id); if(!el) continue;
-    const t=la[a.id]; const on = t!=null && t<4;
-    el.classList.toggle('on',on);
-    if(a.id==='ingest') el.querySelector('.sub').textContent = s.ws? (s.ws.connected?`ws on · ${s.counters['ws.tokens_new']||0} launches`:'ws off') : 'no ws';
-    if(a.id==='gates') el.querySelector('.sub').textContent = `${s.counters['screen.pass']||0} pass · ${s.counters['screen.fail']||0} fail`;
-    if(a.id==='gmgn') el.querySelector('.sub').textContent = s.gmgn? (s.gmgn.cooldown_sec?`cooldown ${s.gmgn.cooldown_sec}s`:`${s.gmgn.requests} req · ${s.gmgn.errors} err`) : 'off';
-  }
+function renderCoins(s){
+  const w=(s.watchlist||[]).slice();
+  const rank=e=>e.checks===0?1:(e.last_failed&&e.last_failed.length?2:0);
+  w.sort((a,b)=>rank(a)-rank(b)||(b.passes-a.passes)||(a.age_sec-b.age_sec));
+  const shown=w.slice(0,12);
+  $('#coins-n').textContent=w.length?`${w.length} token${w.length>1?'s':''} on watch · ${s.counters['screen.pass']||0} pass · ${s.counters['screen.fail']||0} fail`:'';
+  if(!shown.length){$('#coins').innerHTML='<div class="empty-card">belum ada token di watchlist · nunggu launch yang lolos cheap gates</div>';return}
+  $('#coins').innerHTML=shown.map((e,i)=>{
+    const failing=e.last_failed&&e.last_failed.length;
+    const cls=e.checks===0?'wait':failing?'fail':'pass';
+    const st=e.checks===0?`check ${e.next_check_sec}s`:failing?esc(e.last_failed[0])+(e.last_failed.length>1?' +'+(e.last_failed.length-1):''):`pass ×${e.passes}`;
+    const on=e.last_check_age_sec!=null&&e.last_check_age_sec<3;
+    const prog=e.migrated?100:(e.progress!=null?Math.round(e.progress*100):null);
+    return `<div class="coin ${cls} ${e.migrated?'mig':''} ${on?'on':''}" ${e.candidate_id?`onclick="openCand(${e.candidate_id})"`:''}>
+      <div class="n">${String(i+1).padStart(2,'0')}</div><div class="st">${st}</div>
+      <div class="sym">$${esc(e.symbol||e.mint.slice(0,6))}</div>
+      <div class="m">mcap <b>${fmtUsd(e.mcap_usd)}</b> · ${e.holders!=null?e.holders+'h':'–'} · liq ${fmtUsd(e.liquidity_usd)}</div>
+      <div class="m mut">top10 ${pct(e.top10)} · smart ${e.smart??'–'} · snip ${e.snipers??'–'}${e.buys_1m!=null?` · 1m ${e.buys_1m}b/${e.sells_1m??0}s`:''}</div>
+      <div class="bar"><i style="width:${prog??0}%"></i></div>
+      <div class="foot"><span>${e.migrated?'migrated':prog!=null?'bond '+prog+'%':'bonding –'}</span><span>${age(e.age_sec)} · ${e.checks} chk</span></div>
+    </div>`}).join('');
 }
 function renderLadder(s){
   const w=s.watchlist||[]; $('#wl-n').textContent=w.length?`${w.length} tokens`:'';
@@ -288,7 +302,7 @@ async function refreshEquity(){
 async function refreshTimeline(){ timeline=await api('/api/timeline?minutes=120'); }
 async function refreshStatus(){
   const s=await api('/api/status'); if(!s) return; status=s; status.started_at=s.now-s.uptime_sec;
-  renderHeader(s); renderTiles(s); renderAgents(s); renderLadder(s);
+  renderHeader(s); renderTiles(s); renderCoins(s); renderLadder(s);
   if(openSections.params) renderParams(); if(openSections.diag) renderDiag();
 }
 /* ---------- bottom sections ---------- */

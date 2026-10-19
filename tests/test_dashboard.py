@@ -135,7 +135,7 @@ async def screenshot() -> None:
                 await pg.goto(f"{BASE}/?token={TOKEN}", wait_until="networkidle")
                 await pg.wait_for_timeout(3500)
                 await pg.screenshot(path=str(out / f"dashboard-{name}.png"), full_page=(name == "mobile"))
-                await pg.click(".log div[data-cid]")  # open candidate drawer from the activity log
+                await pg.click(".coin")  # open candidate drawer from a coin card
                 await pg.wait_for_timeout(600)
                 await pg.screenshot(path=str(out / f"dashboard-{name}-drawer.png"))
                 print("screenshot", out / f"dashboard-{name}.png")

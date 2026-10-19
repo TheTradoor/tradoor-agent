@@ -137,7 +137,13 @@ class WebDashboard(Component):
                     "mint": e.evt.mint, "symbol": (snap.symbol if snap and snap.symbol else e.evt.symbol),
                     "age_sec": int(now - e.first_seen), "checks": e.checks, "passes": e.passes,
                     "last_failed": e.last_failed, "migrated": e.migrated, "next_check_sec": max(0, int(e.next_check - now)),
+                    "last_check_age_sec": round(now - e.last_check, 1) if e.last_check else None,
+                    "candidate_id": e.last_candidate_id,
                     "mcap_usd": snap.mcap_usd if snap else None, "holders": snap.holder_count if snap else None,
+                    "liquidity_usd": snap.liquidity_usd if snap else None, "top10": snap.top10_rate if snap else None,
+                    "smart": snap.smart_wallets if snap else None, "snipers": snap.sniper_count if snap else None,
+                    "progress": snap.launchpad_progress if snap else None,
+                    "buys_1m": snap.buys_1m if snap else None, "sells_1m": snap.sells_1m if snap else None,
                 })
         tstats = await ctx.db.trade_stats()
         return _json({
