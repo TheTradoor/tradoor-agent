@@ -120,6 +120,12 @@ def unit_tests() -> None:
     assert abs(s.price_change_1m - 0.125) < 1e-9 and abs(s.price_change_5m - 0.5) < 1e-9
     s2 = build_snapshot("x", {"stat": {"top_10_holder_rate": 21.0}}, {})
     assert s2.top10_rate == 0.21, "percent values must be normalized to fractions"
+    # honeypot: only an explicit flag counts; counts / -1 / missing are unknown (gate passes as n/a)
+    assert build_snapshot("x", {}, {"is_honeypot": 1}).honeypot is True
+    assert build_snapshot("x", {}, {"is_honeypot": "true"}).honeypot is True
+    assert build_snapshot("x", {}, {"is_honeypot": 0, "can_sell": 0, "can_not_sell": 0}).honeypot is False
+    assert build_snapshot("x", {}, {"is_honeypot": -1, "can_sell": 0}).honeypot is None
+    assert build_snapshot("x", {}, {"can_sell": 0, "can_not_sell": 3}).honeypot is None
 
     th = dict(min_holders=30, min_liquidity_usd=3000, min_mcap_usd=8000, max_mcap_usd=250000, max_top10=0.45, max_dev_hold=0.15,
               max_bundler=0.20, max_rat=0.20, max_snipers=15, max_sniper_hold=0.30, max_entrapment=0.10, require_renounced=True)

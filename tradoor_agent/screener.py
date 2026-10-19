@@ -21,7 +21,7 @@ from .models import Candidate, Lane, TokenEvent, TokenSnapshot
 STRUCTURAL = {"renounced_mint", "renounced_freeze", "honeypot", "bundler", "entrapment", "dev_hold", "rat_trader"}
 # gates a healthy token simply has not reached yet; failing only these is "not yet", not "bad"
 GROWTH = {"holders", "liquidity", "mcap_min"}
-CHECKS_PER_TICK = 8
+CHECKS_PER_TICK = 5
 
 
 @dataclass

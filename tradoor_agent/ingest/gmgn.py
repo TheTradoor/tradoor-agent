@@ -237,6 +237,10 @@ class GmgnClient:
             for sub in sec:
                 if isinstance(sec[sub], (dict, list)):
                     sk[f"security.{sub}"] = keys(sec[sub])
+            sk["security VALUES (last token)"] = [f"{k}={sec[k]!r}" for k in sorted(sec) if not isinstance(sec[k], (dict, list))][:40]
+        if isinstance(info, dict) and isinstance(info.get("stat"), dict):
+            st = info["stat"]
+            sk["info.stat VALUES (last token)"] = [f"{k}={st[k]!r}" for k in sorted(st) if not isinstance(st[k], (dict, list))][:40]
         self.stats.sample_keys = sk
 
 
@@ -289,15 +293,28 @@ def _chg(now: float | None, before: float | None) -> float | None:
     return now / before - 1.0
 
 
+def _flag(v: Any) -> bool | None:
+    """Strict boolean: only True/1/"1"/"true" count as set. -1, counts, None -> unknown."""
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)):
+        return True if v == 1 else (False if v == 0 else None)
+    if isinstance(v, str):
+        t = v.strip().lower()
+        return True if t in ("1", "true", "yes") else (False if t in ("0", "false", "no") else None)
+    return None
+
+
 def _honeypot(sec: dict) -> bool | None:
-    """True when GMGN says the token cannot be sold."""
-    hp = _b(_first(sec.get("is_honeypot"), sec.get("honeypot")))
-    can_sell = _b(sec.get("can_sell"))
-    cannot = _b(sec.get("can_not_sell"))
-    if hp is True or cannot is True or can_sell is False:
-        return True
-    if hp is False or can_sell is True:
-        return False
+    """True only when GMGN explicitly flags the token as a honeypot.
+
+    can_sell / can_not_sell are NOT used: on fresh tokens they look like counts
+    (0 sells so far), and reading them as booleans flagged every launch.
+    """
+    for k in ("is_honeypot", "honeypot"):
+        f = _flag(sec.get(k))
+        if f is not None:
+            return f
     return None
 
 
