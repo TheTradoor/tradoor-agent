@@ -152,6 +152,12 @@ class Screener(Component):
         e.checks += 1
         e.last_snap = snap
         e.last_check = time.time()
+        # not a fresh launch (an existing token opening a new pool shows up as "create"): drop it
+        if snap.creation_ts and now - snap.creation_ts > p("screen_max_age_sec"):
+            e.structural_fails = 99
+            self.ctx.state.bump("screen.evict.old_token")
+            self.ctx.state.log("gates", "drop", f"OLD ${snap.symbol or e.evt.symbol} · dibuat {int((now - snap.creation_ts) / 60)} menit lalu, bukan launch baru", snap.mint)
+            return
         holders = snap.holder_count or 0
         if holders > e.prev_holders:
             e.stagnant = 0
@@ -186,6 +192,7 @@ class Screener(Component):
         )
         cand.breakdown["symbol"] = snap.symbol or e.evt.symbol
         cand.breakdown["migrated"] = e.migrated
+        cand.breakdown["pool"] = e.evt.raw.get("pool") if isinstance(e.evt.raw, dict) else None
         cand.id = await self.ctx.db.insert_candidate(cand)
         e.last_candidate_id = cand.id
 

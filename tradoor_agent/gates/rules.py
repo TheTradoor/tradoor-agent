@@ -55,9 +55,11 @@ def hard_gates(
         return GateResult(name, v >= limit, detail=f"{fmt(v)} >= {fmt(limit)}", value=float(v))
 
     usd = lambda x: f"${x:,.0f}"  # noqa: E731
+    bonding = snap.launchpad_status == 1
     out = [
         ge("holders", snap.holder_count, min_holders),
-        ge("liquidity", snap.liquidity_usd, min_liquidity_usd, usd),
+        # on the bonding curve liquidity is implied by mcap; GMGN often reports 0 there. Gate it only after migration.
+        GateResult("liquidity", True, detail="n/a (bonding)") if bonding else ge("liquidity", snap.liquidity_usd, min_liquidity_usd, usd),
         ge("mcap_min", snap.mcap_usd, min_mcap_usd, usd),
         le("mcap_max", snap.mcap_usd, max_mcap_usd, usd),
         le("top10", snap.top10_rate, max_top10),
@@ -67,12 +69,12 @@ def hard_gates(
         le("insider", snap.insider_rate, max_insider),
         le("snipers", snap.sniper_count, max_snipers, fmt=str),
         le("rug_ratio", snap.rug_ratio, max_rug_ratio),
-        GateResult("wash_trading", snap.wash_trading is not True, detail=str(snap.wash_trading)),
+        GateResult("wash_trading", snap.wash_trading is not True, detail="n/a" if snap.wash_trading is None else str(snap.wash_trading)),
     ]
     if require_renounced:
         # Solana: mint + freeze authority must both be renounced. None -> n/a (pass), False -> fail.
-        out.append(GateResult("renounced_mint", snap.renounced_mint is not False, detail=str(snap.renounced_mint)))
-        out.append(GateResult("renounced_freeze", snap.renounced_freeze is not False, detail=str(snap.renounced_freeze)))
+        out.append(GateResult("renounced_mint", snap.renounced_mint is not False, detail="n/a" if snap.renounced_mint is None else str(snap.renounced_mint)))
+        out.append(GateResult("renounced_freeze", snap.renounced_freeze is not False, detail="n/a" if snap.renounced_freeze is None else str(snap.renounced_freeze)))
     return out
 
 

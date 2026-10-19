@@ -128,6 +128,7 @@ class WebDashboard(Component):
                 "requests": gs.requests, "cache_hits": gs.cache_hits, "errors": gs.errors, "rate_limited": gs.rate_limited,
                 "weight_used": round(gs.weight_used), "waited_sec": round(gs.waited_sec, 1),
                 "cooldown_sec": max(0, int(gs.cooldown_until - now)), "last_error": gs.last_error,
+                "security_errors": gs.security_errors, "last_security_error": gs.last_security_error, "sample_keys": gs.sample_keys,
                 "budget_per_sec": round(s.gmgn_rate_weight * s.gmgn_budget_fraction, 1), "by_path": gs.by_path,
             }
         watch = []
@@ -249,12 +250,15 @@ class WebDashboard(Component):
                 n = g.get("name")
                 if not n:
                     continue
-                if (g.get("detail") or "") == "n/a":
+                if str(g.get("detail") or "").startswith("n/a"):
                     gate_na[n] = gate_na.get(n, 0) + 1
                     continue
                 gate_eval[n] = gate_eval.get(n, 0) + 1
                 if not g.get("passed"):
                     gate_fail[n] = gate_fail.get(n, 0) + 1
+            cts = b.get("creation_ts")
+            if isinstance(cts, (int, float)) and r["ts"] - cts > 3600:
+                continue   # existing token with a new pool, not a launch
             rec = {"id": r["id"], "ts": r["ts"], "mint": r["mint"], "lane": r["lane"], "age": int(r["token_age_sec"] or 0),
                    "symbol": b.get("symbol"), "mcap": b.get("mcap_usd"), "holders": b.get("holder_count"), "liq": b.get("liquidity_usd"),
                    "top10": b.get("top10_rate"), "bundler": b.get("bundler_rate"), "insider": b.get("insider_rate"), "snipers": b.get("sniper_count"),

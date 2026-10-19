@@ -326,8 +326,8 @@ async function refreshFunnel(){
    <div class="empty" style="padding:10px 0 4px">latest check per token · p50 / p90 / max</div>
    <div class="kv"><div>holders</div><div>${f('holders',n)}</div><div>mcap</div><div>${f('mcap',fmtUsd)}</div><div>liquidity</div><div>${f('liq',fmtUsd)}</div><div>top10</div><div>${f('top10',pc)}</div><div>bundler</div><div>${f('bundler',pc)}</div><div>insider</div><div>${f('insider',pc)}</div><div>dev</div><div>${f('dev',pc)}</div><div>snipers</div><div>${f('snipers',n)}</div><div>smart wallets</div><div>${f('smart',n)}</div></div>
    <div class="empty" style="padding:12px 0 4px">highest mcap seen · what blocked it</div>
-   <table><thead><tr><th>token</th><th>mcap</th><th>holders</th><th>top10</th><th>bundler</th><th>snipers</th><th>smart</th><th>blocked by</th></tr></thead><tbody>
-   ${d.top_mcap.map(v=>`<tr style="cursor:pointer" onclick="openCand(${v.id})"><td><b>$${esc(v.symbol||v.mint.slice(0,6))}</b></td><td>${fmtUsd(v.mcap)}</td><td>${v.holders??'–'}</td><td>${pc(v.top10)}</td><td>${pc(v.bundler)}</td><td>${v.snipers??'–'}</td><td>${v.smart??'–'}</td><td style="${v.failed.length?'':'color:var(--ok)'}">${v.failed.length?esc(v.failed.join(', ')):'PASS'}</td></tr>`).join('')}
+   <table><thead><tr><th>token</th><th>mcap</th><th>holders</th><th class="hide-m">top10</th><th class="hide-m">bundler</th><th class="hide-m">smart</th><th>blocked by</th></tr></thead><tbody>
+   ${d.top_mcap.map(v=>`<tr style="cursor:pointer" onclick="openCand(${v.id})"><td><b>$${esc(v.symbol||v.mint.slice(0,6))}</b></td><td>${fmtUsd(v.mcap)}</td><td>${v.holders??'–'}</td><td class="hide-m">${pc(v.top10)}</td><td class="hide-m">${pc(v.bundler)}</td><td class="hide-m">${v.smart??'–'}</td><td style="${v.failed.length?'':'color:var(--ok)'}">${v.failed.length?esc(v.failed.join(', ')):'PASS'}</td></tr>`).join('')}
    </tbody></table>`;
 }
 $('#fn-min').onchange=refreshFunnel;
@@ -371,6 +371,8 @@ function renderDiag(){
    <div>gmgn by path</div><div>${esc(JSON.stringify(g.by_path||{}))}</div>
    <div>gmgn errors</div><div>${g.errors??'-'} · 429 ×${g.rate_limited??0}${g.cooldown_sec?' · COOLDOWN '+g.cooldown_sec+'s':''}</div>
    <div>gmgn last error</div><div>${esc(g.last_error||'-')}</div>
+   <div>gmgn security errors</div><div style="${g.security_errors?'color:var(--bad)':''}">${g.security_errors??'-'} ${g.last_security_error?'· '+esc(g.last_security_error):''}</div>
+   <div>gmgn fields returned</div><div>${Object.entries(g.sample_keys||{}).map(([k,v])=>`<div><b>${esc(k)}</b>: ${esc(v.join(', '))}</div>`).join('')||'-'}</div>
    <div>heartbeats</div><div>${esc(JSON.stringify(s.heartbeats_age_sec))}</div><div>counters</div><div>${esc(JSON.stringify(s.counters))}</div>
    <div>candidates 24h</div><div>${esc(JSON.stringify(s.candidates_24h))}</div><div>version</div><div>v${esc(s.version)} · pid ${s.pid}</div></div>`;
 }

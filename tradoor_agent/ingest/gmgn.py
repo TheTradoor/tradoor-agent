@@ -92,6 +92,9 @@ class GmgnStats:
     last_error: str = ""
     cooldown_until: float = 0.0
     by_path: dict[str, int] = field(default_factory=dict)
+    security_errors: int = 0
+    last_security_error: str = ""
+    sample_keys: dict[str, list] = field(default_factory=dict)   # field names GMGN actually returns
 
 
 class GmgnClient:
@@ -209,9 +212,32 @@ class GmgnClient:
         if isinstance(info, Exception):
             raise info
         if isinstance(sec, Exception):
-            log.debug("security failed for %s: %s", mint, sec)
+            self.stats.security_errors += 1
+            self.stats.last_security_error = str(sec)[:200]
+            if self.stats.security_errors in (1, 10, 100) or self.stats.security_errors % 1000 == 0:
+                log.warning("token/security failed (#%d) for %s: %s", self.stats.security_errors, mint, sec)
             sec = {}
+        self._remember_keys(info or {}, sec or {})
         return build_snapshot(mint, info or {}, sec or {})
+
+    def _remember_keys(self, info: Any, sec: Any) -> None:
+        """Keep the key structure of the latest payloads so the dashboard can show what GMGN really returns."""
+        def keys(x: Any) -> list:
+            if isinstance(x, dict):
+                return sorted(x.keys())[:60]
+            if isinstance(x, list):
+                return [f"<list len={len(x)}>"] + (keys(x[0]) if x and isinstance(x[0], dict) else [])
+            return [f"<{type(x).__name__}>"]
+        sk: dict[str, list] = {"info": keys(info), "security": keys(sec)}
+        if isinstance(info, dict):
+            for sub in ("price", "dev", "stat", "wallet_tags_stat", "link"):
+                if sub in info:
+                    sk[f"info.{sub}"] = keys(info[sub])
+        if isinstance(sec, dict):
+            for sub in sec:
+                if isinstance(sec[sub], (dict, list)):
+                    sk[f"security.{sub}"] = keys(sec[sub])
+        self.stats.sample_keys = sk
 
 
 # ---------------------------------------------------------------- normalization
