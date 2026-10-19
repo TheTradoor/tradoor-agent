@@ -80,7 +80,8 @@ class Settings(BaseSettings):
     # --- wallet (confirm / live only) ---
     wallet_private_key: str = ""            # base58; use a dedicated hot wallet
 
-    # --- risk ---
+    # --- paper / risk ---
+    paper_start_sol: float = 5.0            # virtual starting balance for dry_run equity curve
     position_size_sol: float = 0.1
     max_open_positions: int = 3
     daily_loss_cap_sol: float = 0.5

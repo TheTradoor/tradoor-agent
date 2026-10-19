@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections import Counter
+from collections import Counter, deque
 from dataclasses import dataclass, field
 
 from .config import Mode
@@ -19,11 +19,20 @@ class RuntimeState:
     heartbeats: dict[str, float] = field(default_factory=dict)
     counters: Counter = field(default_factory=Counter)
     stop: asyncio.Event = field(default_factory=asyncio.Event)
+    # human-readable activity feed for the dashboard: {"ts","actor","kind","text","mint"}
+    activity: deque = field(default_factory=lambda: deque(maxlen=400))
+    last_active: dict[str, float] = field(default_factory=dict)   # actor -> last activity ts
 
     # --- signals ---
 
     def heartbeat(self, component: str) -> None:
         self.heartbeats[component] = time.time()
+
+    def log(self, actor: str, kind: str, text: str, mint: str | None = None, **extra) -> None:
+        """Append to the activity feed. kind: info | watch | pass | fail | trade | warn | error"""
+        now = time.time()
+        self.activity.appendleft({"ts": now, "actor": actor, "kind": kind, "text": text, "mint": mint, **extra})
+        self.last_active[actor] = now
 
     def bump(self, key: str, n: int = 1) -> None:
         self.counters[key] += n

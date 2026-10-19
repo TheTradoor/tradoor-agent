@@ -299,6 +299,39 @@ class Database:
         )
         return float(row["pnl"]) if row else 0.0
 
+    async def trade_stats(self) -> dict:
+        """All-time: realized pnl, wins, losses, current streak (+n wins / -n losses), count."""
+        row = await self.fetchone(
+            "SELECT COUNT(*) AS n, COALESCE(SUM(pnl_sol),0) AS pnl, "
+            "SUM(CASE WHEN pnl_sol > 0 THEN 1 ELSE 0 END) AS wins, "
+            "SUM(CASE WHEN pnl_sol <= 0 THEN 1 ELSE 0 END) AS losses FROM trades"
+        )
+        recent = await self.fetchall("SELECT pnl_sol FROM trades ORDER BY closed_at DESC LIMIT 200")
+        streak = 0
+        if recent:
+            sign = recent[0]["pnl_sol"] > 0
+            for r in recent:
+                if (r["pnl_sol"] > 0) == sign:
+                    streak += 1
+                else:
+                    break
+            if not sign:
+                streak = -streak
+        return {"trades": int(row["n"] or 0), "pnl_sol": float(row["pnl"] or 0), "wins": int(row["wins"] or 0), "losses": int(row["losses"] or 0), "streak": streak}
+
+    async def equity_curve(self, start_sol: float, limit: int = 2000) -> list[dict]:
+        """Cumulative balance after each closed trade, oldest first, with markers."""
+        rows = await self.fetchall(
+            "SELECT t.closed_at, t.pnl_sol, t.mint, t.exit_reason, t.lane, p.opened_at, p.size_sol "
+            "FROM trades t LEFT JOIN positions p ON p.id = t.position_id ORDER BY t.closed_at ASC LIMIT ?", (limit,)
+        )
+        bal = start_sol
+        out = []
+        for r in rows:
+            bal += float(r["pnl_sol"] or 0)
+            out.append({"ts": r["closed_at"], "balance": bal, "pnl": r["pnl_sol"], "mint": r["mint"], "exit": r["exit_reason"], "lane": r["lane"], "opened_at": r["opened_at"], "size_sol": r["size_sol"]})
+        return out
+
     async def ensure_daily_stats_row(self) -> None:
         import time
         await self.execute(

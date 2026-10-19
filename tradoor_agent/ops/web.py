@@ -16,6 +16,7 @@ Write endpoints:
 from __future__ import annotations
 
 import json
+import os
 import secrets
 import time
 from pathlib import Path
@@ -65,6 +66,8 @@ class WebDashboard(Component):
         app.router.add_get("/api/timeline", self.api_timeline)
         app.router.add_get("/api/frames", self.api_frames)
         app.router.add_get("/api/trades", self.api_trades)
+        app.router.add_get("/api/activity", self.api_activity)
+        app.router.add_get("/api/equity", self.api_equity)
         app.router.add_post("/api/pause", self.api_pause)
         app.router.add_post("/api/resume", self.api_resume)
         app.router.add_post("/api/param", self.api_param)
@@ -136,9 +139,15 @@ class WebDashboard(Component):
                     "last_failed": e.last_failed, "migrated": e.migrated, "next_check_sec": max(0, int(e.next_check - now)),
                     "mcap_usd": snap.mcap_usd if snap else None, "holders": snap.holder_count if snap else None,
                 })
+        tstats = await ctx.db.trade_stats()
         return _json({
             "now": now,
             "version": _version(),
+            "pid": os.getpid(),
+            "paper_start_sol": s.paper_start_sol,
+            "balance_sol": s.paper_start_sol + tstats["pnl_sol"],
+            "trade_stats": tstats,
+            "last_active": {k: round(now - v, 1) for k, v in st.last_active.items()},
             "mode": s.mode.value, "paused": st.paused, "kill_requested": st.kill_requested,
             "can_enter": st.can_enter, "uptime_sec": int(st.uptime_sec),
             "counters": dict(st.counters),
@@ -208,6 +217,15 @@ class WebDashboard(Component):
         pos = await self.ctx.db.fetchall("SELECT id, mint, lane, opened_at, entry_price_sol, size_sol, tokens, status FROM positions WHERE status IN ('open','closing') ORDER BY opened_at DESC LIMIT 50")
         trades = await self.ctx.db.fetchall("SELECT id, mint, lane, day, closed_at, holding_sec, pnl_sol, pnl_pct, exit_reason FROM trades ORDER BY closed_at DESC LIMIT 100")
         return _json({"positions": [dict(r) for r in pos], "trades": [dict(r) for r in trades]})
+
+    async def api_activity(self, request: web.Request) -> web.Response:
+        limit = _int(request.query.get("limit"), 80, 1, 400)
+        return _json({"items": list(self.ctx.state.activity)[:limit]})
+
+    async def api_equity(self, request: web.Request) -> web.Response:
+        s = self.ctx.settings
+        curve = await self.ctx.db.equity_curve(s.paper_start_sol)
+        return _json({"start_sol": s.paper_start_sol, "points": curve, "now": time.time()})
 
     async def api_pause(self, request: web.Request) -> web.Response:
         self.ctx.state.paused = True

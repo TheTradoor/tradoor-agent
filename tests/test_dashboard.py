@@ -77,6 +77,26 @@ async def main() -> None:
             assert len(fr["frames"]) == 8 and fr["frames"][0]["kind"] == "unknown"
             tr = await (await http.get(f"{BASE}/api/trades")).json()
             assert tr == {"positions": [], "trades": []}
+            act = await (await http.get(f"{BASE}/api/activity")).json()
+            kinds = {i["kind"] for i in act["items"]}
+            assert {"watch", "pass", "fail", "drop"} <= kinds, kinds
+            assert any(i.get("candidate_id") for i in act["items"] if i["kind"] == "pass")
+            eq = await (await http.get(f"{BASE}/api/equity")).json()
+            assert eq["start_sol"] == settings.paper_start_sol and eq["points"] == []
+            assert st["trade_stats"] == {"trades": 0, "pnl_sol": 0.0, "wins": 0, "losses": 0, "streak": 0}
+            assert st["balance_sol"] == settings.paper_start_sol and st["pid"] > 0
+            # seed fake closed trades so the equity chart / streak have something to show
+            import time as _t
+            now = _t.time()
+            for i, pnl in enumerate([0.03, -0.02, 0.05, 0.04, -0.01, 0.06, 0.02]):
+                pid = await db.execute("INSERT INTO positions(mint,lane,opened_at,closed_at,entry_price_sol,size_sol,tokens,status) VALUES(?,?,?,?,?,?,?,?)",
+                                       (f"Mint{i}", "fast", now - 3600 + i * 400, now - 3600 + i * 400 + 120, 1e-7, 0.1, 1e6, "closed"))
+                await db.execute("INSERT INTO trades(position_id,mint,lane,day,closed_at,holding_sec,pnl_sol,pnl_pct,exit_reason) VALUES(?,?,?,?,?,?,?,?,?)",
+                                 (pid, f"Mint{i}", "fast", db.today(), now - 3600 + i * 400 + 120, 120, pnl, pnl / 0.1 * 100, "tp" if pnl > 0 else "sl"))
+            eq = await (await http.get(f"{BASE}/api/equity")).json()
+            assert len(eq["points"]) == 7 and abs(eq["points"][-1]["balance"] - (settings.paper_start_sol + 0.17)) < 1e-9
+            st2 = await (await http.get(f"{BASE}/api/status")).json()
+            assert st2["trade_stats"]["wins"] == 5 and st2["trade_stats"]["losses"] == 2 and st2["trade_stats"]["streak"] == 2
             # controls
             p = await (await http.post(f"{BASE}/api/pause")).json()
             assert p["paused"] is True and state.paused is True and state.can_enter is False
@@ -113,10 +133,11 @@ async def screenshot() -> None:
             for name, vp in (("desktop", {"width": 1100, "height": 900}), ("mobile", {"width": 390, "height": 844})):
                 pg = await b.new_page(viewport=vp, color_scheme="dark")
                 await pg.goto(f"{BASE}/?token={TOKEN}", wait_until="networkidle")
-                await pg.wait_for_timeout(1200)
-                await pg.click(".cand")  # expand first candidate
+                await pg.wait_for_timeout(3500)
+                await pg.screenshot(path=str(out / f"dashboard-{name}.png"), full_page=(name == "mobile"))
+                await pg.click(".log div[data-cid]")  # open candidate drawer from the activity log
                 await pg.wait_for_timeout(600)
-                await pg.screenshot(path=str(out / f"dashboard-{name}.png"), full_page=True)
+                await pg.screenshot(path=str(out / f"dashboard-{name}-drawer.png"))
                 print("screenshot", out / f"dashboard-{name}.png")
             await b.close()
     except Exception as e:  # browser missing etc.

@@ -98,8 +98,11 @@ Agent nyalain web kecil di port `WEB_PORT` (default 8787). Buka `http://IP-VPS:8
 Token: isi `WEB_TOKEN` di `.env`, atau biarkan kosong dan agent bikin sendiri sekali lalu kirim link-nya ke Telegram saat start
 (atau lihat `journalctl -u tradoor-agent | grep dashboard`). Setelah sekali buka dengan `?token=`, cookie nyimpen 30 hari.
 
-Isi: pill status (mode, running/paused, WS, GMGN), tile counter, timeline 120 menit, tab kandidat (klik buat lihat tiap gate +
-semua metrik GMGN), watchlist, frame WS mentah, params (ubah threshold live), trades (fase 2+), diagnostik.
+Tampilan "survival mode" (tema kertas, monospace): header ALIVE / win streak / uptime / checks / pid, tile balance · P&L ·
+launches/screened · win rate dengan sparkline, grafik balance history (equity paper, marker tiap trade), activity log
+(klik baris PASS/FAIL buat buka detail gate + metrik GMGN), watchlist ladder, dan 7 kartu agent (INGEST, GATES, GMGN, SCORER,
+LLM, RISK, EXEC) yang nyala saat aktif. Di bawah: Candidates, Params (ubah threshold live), WS frames, Diagnostics.
+Balance / P&L / win rate baru bergerak setelah fase 2 (paper trade); saldo awal virtual = `PAPER_START_SOL` (default 5).
 Tombol pause/resume ada di header. Kill tetap cuma lewat Telegram atau file `data/KILL`.
 
 Berbagi VPS dengan bot lain (misal The Watchers): aman. Unit systemd dibatasi `MemoryMax=1G`, `CPUQuota=70%`, `Nice=5`.

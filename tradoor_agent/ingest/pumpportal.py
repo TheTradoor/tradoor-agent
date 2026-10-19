@@ -149,6 +149,7 @@ class PumpPortalIngest(Component):
                     self.connected = True
                     self.ctx.state.bump("ws.connects")
                     self.log.info("connected to PumpPortal")
+                    self.ctx.state.log("ingest", "info", "PumpPortal connected · subscribed new tokens + migrations")
                     await ws.send(json.dumps({"method": "subscribeNewToken"}))
                     await ws.send(json.dumps({"method": "subscribeMigration"}))
                     if self.trade_subs:
@@ -170,6 +171,7 @@ class PumpPortalIngest(Component):
                 self.ctx.state.bump("ws.errors")
                 self.last_error = f"{type(e).__name__}: {e}"[:300]
                 self.log.warning("PumpPortal error: %s; retry in %ss", self.last_error, backoff)
+                self.ctx.state.log("ingest", "error", f"PumpPortal {self.last_error[:80]} · retry {backoff}s")
             if await self.sleep(backoff):
                 return
             backoff = min(backoff * 2, 60)   # polite: PumpPortal bans connection floods
@@ -233,11 +235,13 @@ class PumpPortalIngest(Component):
 
     async def _on_create(self, evt: TokenEvent) -> None:
         self.ctx.state.bump("ws.tokens_new")
+        self.ctx.state.last_active["ingest"] = time.time()
         await self.ctx.db.upsert_token(evt)
         self.ctx.bus.publish(TOPIC_TOKEN_NEW, evt)
 
     async def _on_migrate(self, msg: dict) -> None:
         self.ctx.state.bump("ws.migrations")
         mint = str(msg.get("mint"))
+        self.ctx.state.log("ingest", "info", f"MIGRATED {mint[:6]}… → {msg.get('pool') or 'amm'}", mint)
         await self.ctx.db.mark_migrated(mint, pool=str(msg.get("pool", "") or ""))
         self.ctx.bus.publish(TOPIC_TOKEN_MIGRATED, {"mint": mint, "pool": msg.get("pool"), "signature": msg.get("signature"), "ts": time.time()})

@@ -14,7 +14,7 @@ from .bus import TOPIC_CANDIDATE, TOPIC_TOKEN_MIGRATED, TOPIC_TOKEN_NEW
 from .component import Component, Context
 from .gates.rules import cheap_gates, failed, hard_gates
 from .ingest.gmgn import GmgnClient, GmgnError
-from .ingest.pumpportal import PumpPortalIngest
+from .ingest.pumpportal import PumpPortalIngest, dev_initial_buy
 from .models import Candidate, Lane, TokenEvent, TokenSnapshot
 
 # failing one of these twice in a row means the token's structure is bad; stop spending weight on it
@@ -81,6 +81,7 @@ class Screener(Component):
             if bad:
                 self.ctx.state.bump("screen.cheap_drop")
                 self.log.debug("cheap drop %s %s: %s", evt.symbol, evt.mint[:8], bad)
+                self.ctx.state.log("gates", "drop", f"DROP ${evt.symbol or evt.mint[:6]} · {','.join(bad)}", evt.mint)
                 continue
             if evt.mint in self.watch:
                 continue
@@ -90,6 +91,8 @@ class Screener(Component):
             now = time.time()
             self.watch[evt.mint] = WatchEntry(evt=evt, first_seen=now, next_check=now + p("screen_first_check_sec"))
             self.ctx.state.bump("screen.watched")
+            sol, share = dev_initial_buy(evt)
+            self.ctx.state.log("gates", "watch", f"WATCH ${evt.symbol or evt.mint[:6]} · dev {sol:.2f} SOL ({share * 100:.1f}%)", evt.mint)
 
     def _drain_migrations(self, q: asyncio.Queue) -> None:
         while True:
@@ -123,10 +126,13 @@ class Screener(Component):
         e.next_check = now + p("screen_recheck_sec")
         try:
             snap = await self.gmgn.snapshot(e.evt.mint)
+            self.ctx.state.last_active["gmgn"] = time.time()
         except GmgnError as err:
             self.ctx.state.bump("gmgn.error")
             if err.rate_limited:
+                self.ctx.state.log("gmgn", "warn", f"RATE LIMIT · cooldown {max(0, int(self.gmgn.stats.cooldown_until - time.time()))}s")
                 return
+            self.ctx.state.log("gmgn", "error", f"{e.evt.symbol or e.evt.mint[:6]} · {str(err)[:70]}", e.evt.mint)
             self.log.debug("gmgn snapshot failed %s: %s", e.evt.mint[:8], err)
             return
         except Exception:
@@ -162,9 +168,12 @@ class Screener(Component):
         cand.breakdown["migrated"] = e.migrated
         cand.id = await self.ctx.db.insert_candidate(cand)
 
+        sym = snap.symbol or e.evt.symbol or snap.mint[:6]
+        mc = f"${(snap.mcap_usd or 0) / 1000:.1f}k"
         if passed:
             e.passes += 1
             self.ctx.state.bump("screen.pass")
+            self.ctx.state.log("gates", "pass", f"PASS ${sym} · {mc} · holders {snap.holder_count or '?'} · top10 {(snap.top10_rate or 0) * 100:.0f}% · smart {snap.smart_wallets or 0}", snap.mint, candidate_id=cand.id)
             self.ctx.bus.publish(TOPIC_CANDIDATE, cand)
             if self.ingest and self.ctx.settings.pumpportal_trade_subs and len(self.ingest.trade_subs) < self.ctx.settings.pumpportal_trade_subs_max:
                 await self.ingest.subscribe_trades([snap.mint])
@@ -173,6 +182,7 @@ class Screener(Component):
                 self.ctx.bus.alert(self._card(snap, e, age), "info")
         else:
             self.ctx.state.bump("screen.fail")
+            self.ctx.state.log("gates", "fail", f"FAIL ${sym} · {mc} · {','.join(bad)}", snap.mint, candidate_id=cand.id)
 
     # ------------------------------------------------------------ housekeeping
 
@@ -186,8 +196,10 @@ class Screener(Component):
             elif e.structural_fails >= 2:
                 gone.append((mint, "structural"))
         for mint, why in gone:
-            self.watch.pop(mint, None)
+            e = self.watch.pop(mint, None)
             self.ctx.state.bump(f"screen.evict.{why}")
+            if e and why == "structural":
+                self.ctx.state.log("gates", "drop", f"EVICT ${e.evt.symbol or mint[:6]} · struktural ×2 ({','.join(e.last_failed)})", mint)
         if gone and self.ingest and self.ingest.trade_subs:
             asyncio.create_task(self.ingest.unsubscribe_trades([m for m, _ in gone]))
 
