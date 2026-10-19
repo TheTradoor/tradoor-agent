@@ -305,8 +305,10 @@ async function refreshEquity(){
   $('#ch-empty').textContent=pts.length?'':'flat · paper trades start in phase 2';
 }
 async function refreshTimeline(){ timeline=await api('/api/timeline?minutes=120'); }
+const PAGE_VERSION='__PAGE_VERSION__';
 async function refreshStatus(){
   const s=await api('/api/status'); if(!s) return; status=s; status.started_at=s.now-s.uptime_sec;
+  if(PAGE_VERSION && !PAGE_VERSION.startsWith('__') && s.version && s.version!==PAGE_VERSION){ location.reload(); return; }   // backend updated: load the matching page
   renderHeader(s); renderTiles(s); renderCoins(s); renderLadder(s);
   if(openSections.params) renderParams(); if(openSections.diag) renderDiag();
 }

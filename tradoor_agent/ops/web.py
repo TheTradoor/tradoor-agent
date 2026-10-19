@@ -101,8 +101,8 @@ class WebDashboard(Component):
     # ------------------------------------------------------------ pages
 
     async def page(self, request: web.Request) -> web.Response:
-        html = (STATIC_DIR / "dashboard.html").read_text(encoding="utf-8")
-        return web.Response(text=html, content_type="text/html", headers={"Cache-Control": "no-store"})
+        html = (STATIC_DIR / "dashboard.html").read_text(encoding="utf-8").replace("__PAGE_VERSION__", _version())
+        return web.Response(text=html, content_type="text/html", headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"})
 
     # ------------------------------------------------------------ api
 
