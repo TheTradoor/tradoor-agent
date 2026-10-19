@@ -38,6 +38,8 @@ class WatchEntry:
     last_failed: list[str] = field(default_factory=list)
     last_check: float = 0.0
     last_candidate_id: int | None = None
+    prev_holders: int = -1
+    stagnant: int = 0                       # consecutive checks without holder growth
 
 
 class Screener(Component):
@@ -90,8 +92,12 @@ class Screener(Component):
             if evt.mint in self.watch:
                 continue
             if len(self.watch) >= p("screen_max_watchlist"):
-                self.ctx.state.bump("screen.watchlist_full")
-                continue
+                victim = self._deadest()
+                if victim is None:
+                    self.ctx.state.bump("screen.watchlist_full")
+                    continue
+                self.watch.pop(victim, None)
+                self.ctx.state.bump("screen.evict.replaced")
             now = time.time()
             self.watch[evt.mint] = WatchEntry(evt=evt, first_seen=now, next_check=now + p("screen_first_check_sec"))
             self.ctx.state.bump("screen.watched")
@@ -146,6 +152,15 @@ class Screener(Component):
         e.checks += 1
         e.last_snap = snap
         e.last_check = time.time()
+        holders = snap.holder_count or 0
+        if holders > e.prev_holders:
+            e.stagnant = 0
+        else:
+            e.stagnant += 1
+        e.prev_holders = holders
+        # a token that stopped growing gets checked less often (saves GMGN weight for live ones)
+        mult = min(1 + e.stagnant, p("screen_stagnant_backoff_max"))
+        e.next_check = now + p("screen_recheck_sec") * mult
         gates = hard_gates(
             snap,
             min_holders=p("gate_min_holders"), min_liquidity_usd=p("gate_min_liquidity_usd"),
@@ -178,6 +193,8 @@ class Screener(Component):
         mc = f"${snap.mcap_usd / 1000:.1f}k" if snap.mcap_usd else "mcap n/a"
         if passed:
             e.passes += 1
+            e.stagnant = 0
+            e.next_check = now + p("screen_recheck_sec")
             self.ctx.state.bump("screen.pass")
             self.ctx.state.log("gates", "pass", f"PASS ${sym} · {mc} · holders {snap.holder_count or '?'} · top10 {(snap.top10_rate or 0) * 100:.0f}% · smart {snap.smart_wallets or 0}", snap.mint, candidate_id=cand.id)
             self.ctx.bus.publish(TOPIC_CANDIDATE, cand)
@@ -191,7 +208,7 @@ class Screener(Component):
             # growth-only fails (too young to have holders / liquidity / mcap yet) are expected early on:
             # log them quietly as GROW so the feed highlights the fails that actually matter
             if set(bad) <= GROWTH:
-                self.ctx.state.log("gates", "grow", f"GROW ${sym} · {mc} · {snap.holder_count or 0}h · nunggu {','.join(bad)}", snap.mint, candidate_id=cand.id)
+                self.ctx.state.log("gates", "grow", f"GROW ${sym} · {mc} · {snap.holder_count or 0} holders · nunggu {','.join(bad)}", snap.mint, candidate_id=cand.id)
             else:
                 self.ctx.state.log("gates", "fail", f"FAIL ${sym} · {mc} · {','.join(bad)}", snap.mint, candidate_id=cand.id)
 
@@ -201,11 +218,14 @@ class Screener(Component):
         now = time.time()
         max_age = self.ctx.p("screen_max_age_sec")
         gone = []
+        dead_checks, dead_holders = self.ctx.p("screen_dead_after_checks"), self.ctx.p("screen_dead_max_holders")
         for mint, e in self.watch.items():
             if now - e.first_seen > max_age:
                 gone.append((mint, "expired"))
             elif e.structural_fails >= 2:
                 gone.append((mint, "structural"))
+            elif e.checks >= dead_checks and e.passes == 0 and e.prev_holders < dead_holders:
+                gone.append((mint, "dead"))
         for mint, why in gone:
             e = self.watch.pop(mint, None)
             self.ctx.state.bump(f"screen.evict.{why}")
@@ -213,6 +233,14 @@ class Screener(Component):
                 self.ctx.state.log("gates", "drop", f"EVICT ${e.evt.symbol or mint[:6]} · struktural ×2 ({','.join(e.last_failed)})", mint)
         if gone and self.ingest and self.ingest.trade_subs:
             asyncio.create_task(self.ingest.unsubscribe_trades([m for m, _ in gone]))
+
+    def _deadest(self) -> str | None:
+        """Watchlist is full: pick the entry least worth keeping (never passed, fewest holders, oldest)."""
+        pool = [e for e in self.watch.values() if e.passes == 0 and e.checks >= 1]
+        if not pool:
+            return None
+        victim = min(pool, key=lambda e: (max(e.prev_holders, 0), e.first_seen))
+        return victim.evt.mint
 
     def _alert_budget_ok(self) -> bool:
         now = time.time()

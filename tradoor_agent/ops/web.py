@@ -67,6 +67,7 @@ class WebDashboard(Component):
         app.router.add_get("/api/frames", self.api_frames)
         app.router.add_get("/api/trades", self.api_trades)
         app.router.add_get("/api/activity", self.api_activity)
+        app.router.add_get("/api/funnel", self.api_funnel)
         app.router.add_get("/api/equity", self.api_equity)
         app.router.add_post("/api/pause", self.api_pause)
         app.router.add_post("/api/resume", self.api_resume)
@@ -223,6 +224,72 @@ class WebDashboard(Component):
         pos = await self.ctx.db.fetchall("SELECT id, mint, lane, opened_at, entry_price_sol, size_sol, tokens, status FROM positions WHERE status IN ('open','closing') ORDER BY opened_at DESC LIMIT 50")
         trades = await self.ctx.db.fetchall("SELECT id, mint, lane, day, closed_at, holding_sec, pnl_sol, pnl_pct, exit_reason FROM trades ORDER BY closed_at DESC LIMIT 100")
         return _json({"positions": [dict(r) for r in pos], "trades": [dict(r) for r in trades]})
+
+    _funnel_cache: tuple[float, dict] | None = None
+
+    async def api_funnel(self, request: web.Request) -> web.Response:
+        """Gate funnel over recent checks: which gates block, metric percentiles, best tokens seen."""
+        minutes = _int(request.query.get("minutes"), 60, 5, 24 * 60)
+        now = time.time()
+        if self._funnel_cache and now - self._funnel_cache[0] < 45 and self._funnel_cache[1].get("minutes") == minutes:
+            return _json(self._funnel_cache[1])
+        rows = await self.ctx.db.fetchall(
+            "SELECT id, ts, mint, lane, reason, token_age_sec, gates_json, breakdown_json FROM candidates WHERE ts > ? ORDER BY ts DESC LIMIT 25000",
+            (now - minutes * 60,),
+        )
+        gate_eval: dict[str, int] = {}
+        gate_fail: dict[str, int] = {}
+        gate_na: dict[str, int] = {}
+        latest: dict[str, dict] = {}          # per mint: latest check
+        best: dict[str, dict] = {}            # per mint: check with max mcap
+        for r in rows:
+            gates = _loads(r["gates_json"], [])
+            b = _loads(r["breakdown_json"])
+            for g in gates:
+                n = g.get("name")
+                if not n:
+                    continue
+                if (g.get("detail") or "") == "n/a":
+                    gate_na[n] = gate_na.get(n, 0) + 1
+                    continue
+                gate_eval[n] = gate_eval.get(n, 0) + 1
+                if not g.get("passed"):
+                    gate_fail[n] = gate_fail.get(n, 0) + 1
+            rec = {"id": r["id"], "ts": r["ts"], "mint": r["mint"], "lane": r["lane"], "age": int(r["token_age_sec"] or 0),
+                   "symbol": b.get("symbol"), "mcap": b.get("mcap_usd"), "holders": b.get("holder_count"), "liq": b.get("liquidity_usd"),
+                   "top10": b.get("top10_rate"), "bundler": b.get("bundler_rate"), "insider": b.get("insider_rate"), "snipers": b.get("sniper_count"),
+                   "dev": b.get("dev_hold_rate", b.get("creator_hold_rate")), "smart": b.get("smart_wallets"),
+                   "failed": [g.get("name") for g in gates if not g.get("passed")]}
+            if r["mint"] not in latest:
+                latest[r["mint"]] = rec
+            m = rec["mcap"] or 0
+            if r["mint"] not in best or m > (best[r["mint"]]["mcap"] or 0):
+                best[r["mint"]] = rec
+        funnel = []
+        for n in sorted(set(gate_eval) | set(gate_na), key=lambda k: -gate_fail.get(k, 0)):
+            ev = gate_eval.get(n, 0)
+            funnel.append({"gate": n, "evaluated": ev, "failed": gate_fail.get(n, 0),
+                           "fail_pct": round(gate_fail.get(n, 0) / ev * 100, 1) if ev else None, "na": gate_na.get(n, 0)})
+
+        def pcts(key):
+            vals = sorted(v[key] for v in latest.values() if isinstance(v.get(key), (int, float)))
+            if not vals:
+                return None
+            q = lambda f: vals[min(len(vals) - 1, int(f * (len(vals) - 1)))]  # noqa: E731
+            return {"n": len(vals), "p50": q(0.5), "p90": q(0.9), "max": vals[-1]}
+
+        metrics = {k: pcts(k) for k in ("holders", "mcap", "liq", "top10", "bundler", "insider", "snipers", "dev", "smart")}
+        top = sorted(best.values(), key=lambda v: -(v["mcap"] or 0))[:12]
+        one_away: dict[str, int] = {}
+        for v in latest.values():
+            if len(v["failed"]) == 1:
+                one_away[v["failed"][0]] = one_away.get(v["failed"][0], 0) + 1
+        out = {"minutes": minutes, "checks": len(rows), "mints": len(latest),
+               "passed_mints": sum(1 for v in best.values() if v["lane"] == "screened"),
+               "funnel": funnel, "metrics": metrics, "top_mcap": top,
+               "one_gate_away": sorted(one_away.items(), key=lambda kv: -kv[1])}
+        self._funnel_cache = (now, out)
+        return _json(out)
 
     async def api_activity(self, request: web.Request) -> web.Response:
         limit = _int(request.query.get("limit"), 80, 1, 400)

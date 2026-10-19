@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     screen_max_age_sec: int = 1800          # drop from watchlist after this age
     screen_max_watchlist: int = 150
     screen_alert_max_per_hour: int = 20     # Telegram alerts for tokens that pass hard gates
+    screen_dead_after_checks: int = 3       # evict as "dead" after this many checks if still below...
+    screen_dead_max_holders: int = 10       # ...this many holders (and never passed)
+    screen_stagnant_backoff_max: int = 4    # recheck interval multiplier cap for tokens that stop growing
 
     # --- cheap gates (from the launch event itself) ---
     cheap_max_dev_buy_sol: float = 3.0      # dev initial buy larger than this -> drop
