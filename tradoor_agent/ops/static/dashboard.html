@@ -234,7 +234,7 @@ function renderTiles(s){
   $('#t-bal-s').textContent='initial: '+s.paper_start_sol.toFixed(3)+' SOL · paper';
   const p=st.pnl_sol||0, pp=s.paper_start_sol?p/s.paper_start_sol*100:0;
   const pe=$('#t-pnl'); pe.textContent=(p>=0?'+':'')+sol(p).replace('-',''); pe.textContent=(p>=0?'+':'-')+Math.abs(p).toFixed(3)+' SOL'; pe.className='v'+(st.trades?'':' dim');
-  $('#t-pnl-s').textContent=st.trades?`${(pp>=0?'+':'')+pp.toFixed(1)}% · ${st.trades} trades`:'paper trading starts in phase 2';
+  $('#t-pnl-s').textContent=st.trades?`${(pp>=0?'+':'')+pp.toFixed(1)}% · ${st.trades} trades`:'no paper trades yet';
   $('#t-launch').textContent=`${c['ws.tokens_new']||0} · ${c['screen.pass']||0}`;
   $('#t-launch-s').textContent=`watching ${c['screen.watchlist']||0} · cheap-drop ${c['screen.cheap_drop']||0} · fail ${c['screen.fail']||0}`;
   const n=(st.wins||0)+(st.losses||0);
@@ -303,7 +303,7 @@ async function refreshEquity(){
     ${cx>W-140?`<text class="cur" x="${cx-16}" y="${cy+18}" text-anchor="end">${last.v.toFixed(3)} SOL</text>`:`<text class="cur" x="${cx+14}" y="${cy+4}">${last.v.toFixed(3)} SOL</text>`}
     <text class="lbl muted" x="${L}" y="${H-8}">${tm(t0)}</text><text class="lbl muted" x="${W-R}" y="${H-8}" text-anchor="end">${tm(t1)}</text>`;
   $('#ch-range').textContent=`${pts.length} trades · ${age(Math.floor(t1-t0))}`;
-  $('#ch-empty').textContent=pts.length?'':'flat · paper trades start in phase 2';
+  $('#ch-empty').textContent=pts.length?'':'flat · waiting for the first paper trade';
 }
 async function refreshTimeline(){ timeline=await api('/api/timeline?minutes=120'); }
 const PAGE_VERSION='__PAGE_VERSION__';

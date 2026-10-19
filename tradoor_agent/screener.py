@@ -24,6 +24,11 @@ GROWTH = {"holders", "liquidity", "mcap_min"}
 CHECKS_PER_TICK = 5
 
 
+def tag(sym: str | None, mint: str) -> str:
+    """$SYM·ab12 — same-name spam launches are common, the mint prefix tells them apart."""
+    return f"${sym or mint[:6]}·{mint[:4]}"
+
+
 @dataclass
 class WatchEntry:
     evt: TokenEvent
@@ -87,7 +92,7 @@ class Screener(Component):
             if bad:
                 self.ctx.state.bump("screen.cheap_drop")
                 self.log.debug("cheap drop %s %s: %s", evt.symbol, evt.mint[:8], bad)
-                self.ctx.state.log("gates", "drop", f"DROP ${evt.symbol or evt.mint[:6]} · {','.join(bad)}", evt.mint)
+                self.ctx.state.log("gates", "drop", f"DROP {tag(evt.symbol, evt.mint)} · {','.join(bad)}", evt.mint)
                 continue
             if evt.mint in self.watch:
                 continue
@@ -102,7 +107,7 @@ class Screener(Component):
             self.watch[evt.mint] = WatchEntry(evt=evt, first_seen=now, next_check=now + p("screen_first_check_sec"))
             self.ctx.state.bump("screen.watched")
             sol, share = dev_initial_buy(evt)
-            self.ctx.state.log("gates", "watch", f"WATCH ${evt.symbol or evt.mint[:6]} · dev {sol:.2f} SOL ({share * 100:.1f}%)", evt.mint)
+            self.ctx.state.log("gates", "watch", f"WATCH {tag(evt.symbol, evt.mint)} · dev {sol:.2f} SOL ({share * 100:.1f}%)", evt.mint)
 
     def _drain_migrations(self, q: asyncio.Queue) -> None:
         while True:
@@ -156,7 +161,7 @@ class Screener(Component):
         if snap.creation_ts and now - snap.creation_ts > p("screen_max_age_sec"):
             e.structural_fails = 99
             self.ctx.state.bump("screen.evict.old_token")
-            self.ctx.state.log("gates", "drop", f"OLD ${snap.symbol or e.evt.symbol} · dibuat {int((now - snap.creation_ts) / 60)} menit lalu, bukan launch baru", snap.mint)
+            self.ctx.state.log("gates", "drop", f"OLD {tag(snap.symbol or e.evt.symbol, snap.mint)} · dibuat {int((now - snap.creation_ts) / 60)} menit lalu, bukan launch baru", snap.mint)
             return
         holders = snap.holder_count or 0
         if holders > e.prev_holders:
@@ -196,14 +201,14 @@ class Screener(Component):
         cand.id = await self.ctx.db.insert_candidate(cand)
         e.last_candidate_id = cand.id
 
-        sym = snap.symbol or e.evt.symbol or snap.mint[:6]
-        mc = f"${snap.mcap_usd / 1000:.1f}k" if snap.mcap_usd else "mcap n/a"
+        sym = tag(snap.symbol or e.evt.symbol, snap.mint)
+        mc = f"${snap.mcap_usd / 1000:.1f}k" if snap.mcap_usd else "mcap n/a (belum ada swap)"
         if passed:
             e.passes += 1
             e.stagnant = 0
             e.next_check = now + p("screen_recheck_sec")
             self.ctx.state.bump("screen.pass")
-            self.ctx.state.log("gates", "pass", f"PASS ${sym} · {mc} · holders {snap.holder_count or '?'} · top10 {(snap.top10_rate or 0) * 100:.0f}% · smart {snap.smart_wallets or 0}", snap.mint, candidate_id=cand.id)
+            self.ctx.state.log("gates", "pass", f"PASS {sym} · {mc} · holders {snap.holder_count or '?'} · top10 {(snap.top10_rate or 0) * 100:.0f}% · smart {snap.smart_wallets or 0}", snap.mint, candidate_id=cand.id)
             self.ctx.bus.publish(TOPIC_CANDIDATE, cand)
             if self.ingest and self.ctx.settings.pumpportal_trade_subs and len(self.ingest.trade_subs) < self.ctx.settings.pumpportal_trade_subs_max:
                 await self.ingest.subscribe_trades([snap.mint])
@@ -215,9 +220,9 @@ class Screener(Component):
             # growth-only fails (too young to have holders / liquidity / mcap yet) are expected early on:
             # log them quietly as GROW so the feed highlights the fails that actually matter
             if set(bad) <= GROWTH:
-                self.ctx.state.log("gates", "grow", f"GROW ${sym} · {mc} · {snap.holder_count or 0} holders · nunggu {','.join(bad)}", snap.mint, candidate_id=cand.id)
+                self.ctx.state.log("gates", "grow", f"GROW {sym} · {mc} · {snap.holder_count or 0} holders · nunggu {','.join(bad)}", snap.mint, candidate_id=cand.id)
             else:
-                self.ctx.state.log("gates", "fail", f"FAIL ${sym} · {mc} · {','.join(bad)}", snap.mint, candidate_id=cand.id)
+                self.ctx.state.log("gates", "fail", f"FAIL {sym} · {mc} · {','.join(bad)}", snap.mint, candidate_id=cand.id)
 
     # ------------------------------------------------------------ housekeeping
 
@@ -237,7 +242,7 @@ class Screener(Component):
             e = self.watch.pop(mint, None)
             self.ctx.state.bump(f"screen.evict.{why}")
             if e and why == "structural":
-                self.ctx.state.log("gates", "drop", f"EVICT ${e.evt.symbol or mint[:6]} · struktural ×2 ({','.join(e.last_failed)})", mint)
+                self.ctx.state.log("gates", "drop", f"EVICT {tag(e.evt.symbol, mint)} · struktural ×2 ({','.join(e.last_failed)})", mint)
         if gone and self.ingest and self.ingest.trade_subs:
             asyncio.create_task(self.ingest.unsubscribe_trades([m for m, _ in gone]))
 
