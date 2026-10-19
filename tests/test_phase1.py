@@ -57,14 +57,14 @@ GMGN_INFO = {
            "wallet_tags_stat": {"smart_wallets": 3, "renowned_wallets": 1, "sniper_wallets": 4, "bundler_wallets": 2},
            "link": {"twitter_username": "goodcoin"}},
     BUND: {"symbol": "BUND", "total_supply": 1e9, "liquidity": 15000, "holder_count": 95, "price": {"price": "0.00003"},
-           "stat": {"top_10_holder_rate": 0.44, "dev_team_hold_rate": 0.01, "top_bundler_trader_percentage": 0.38}},
+           "stat": {"top_10_holder_rate": 0.52, "dev_team_hold_rate": 0.01, "top_bundler_trader_percentage": 0.38}},
     RUGD: {"symbol": "RUGD", "total_supply": 1e9, "liquidity": 9000, "holder_count": 60, "price": {"price": "0.00002"},
            "stat": {"top_10_holder_rate": 0.25, "dev_team_hold_rate": 0.05}},
 }
 GMGN_SEC = {
     GOOD: {"renounced_mint": True, "renounced_freeze_account": True, "rug_ratio": 0.0, "is_wash_trading": False, "sniper_count": 6,
            "suspected_insider_hold_rate": 0.05, "bundler_trader_amount_rate": 0.04, "rat_trader_amount_rate": 0.03, "top_10_holder_rate": 0.21},
-    BUND: {"renounced_mint": True, "renounced_freeze_account": True, "rug_ratio": 0.1, "sniper_count": 9, "bundler_trader_amount_rate": 0.38, "top_10_holder_rate": 0.44},
+    BUND: {"renounced_mint": True, "renounced_freeze_account": True, "rug_ratio": 0.1, "sniper_count": 9, "bundler_trader_amount_rate": 0.38, "top_10_holder_rate": 0.52},
     RUGD: {"renounced_mint": True, "renounced_freeze_account": True, "rug_ratio": 0.8, "sniper_count": 2, "top_10_holder_rate": 0.25},
 }
 
