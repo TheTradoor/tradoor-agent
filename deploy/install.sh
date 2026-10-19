@@ -10,10 +10,11 @@ if [[ "$(pwd)" != "$APP_DIR" ]]; then
   echo "jalankan dari $APP_DIR (sekarang: $(pwd))"; exit 1
 fi
 
-PY="$(command -v python3.12 || command -v python3.11 || command -v python3.10 || command -v python3 || true)"
+PY="$(command -v python3 || command -v python3.12 || command -v python3.11 || command -v python3.10 || true)"
 if [[ -z "$PY" ]]; then echo "python3 tidak ditemukan"; exit 1; fi
 VER="$("$PY" -c 'import sys;print(f"{sys.version_info[0]}.{sys.version_info[1]}")')"
-case "$VER" in 3.10|3.11|3.12|3.13) ;; *) echo "butuh Python 3.10+, dapat $VER (Ubuntu 22.04: apt install python3.10-venv; 20.04: pakai deadsnakes python3.11 + python3.11-venv)"; exit 1;; esac
+MINOR="${VER#3.}"
+if [[ "${VER%%.*}" != "3" || "$MINOR" -lt 10 ]]; then echo "butuh Python 3.10+, dapat $VER"; exit 1; fi
 if ! "$PY" -c "import ensurepip, venv" 2>/dev/null; then echo "modul venv belum ada: apt install -y ${PY##*/}-venv"; exit 1; fi
 
 if [[ ! -d .venv ]]; then
