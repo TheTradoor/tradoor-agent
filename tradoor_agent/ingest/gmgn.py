@@ -206,6 +206,21 @@ class GmgnClient:
             q["tag"] = tag
         return await self.request("GET", "/v1/market/token_top_holders", q, cache_key=("holders", mint, limit, tag), cache_sec=max(self.cache_sec, 30))
 
+    WSOL = "So11111111111111111111111111111111111111112"
+
+    async def sol_price_usd(self) -> float | None:
+        """USD per SOL from GMGN's WSOL token info (weight 1, cached 60s). None when unavailable."""
+        try:
+            info = await self.request("GET", "/v1/token/info", {"chain": self.chain, "address": self.WSOL}, cache_key=("info", self.WSOL), cache_sec=60)
+        except GmgnError:
+            return None
+        price = _g(info, "price", "price") if isinstance(_g(info, "price"), dict) else (info or {}).get("price")
+        v = _f(price)
+        if v and v > 1:
+            self._last_sol_usd = v
+            return v
+        return getattr(self, "_last_sol_usd", None)
+
     async def snapshot(self, mint: str) -> TokenSnapshot:
         """info + security in parallel -> TokenSnapshot (weight 2)."""
         info, sec = await asyncio.gather(self.token_info(mint), self.token_security(mint), return_exceptions=True)

@@ -3,9 +3,26 @@
 Solana trading agent. Hot path deterministik (ingest → hard gates → scoring → risk gate → eksekusi),
 LLM cuma di zona abu-abu dengan timeout ketat, dan slow loop buat autopsy + usulan param.
 
-Status: **Fase 1** (ingest + screener). Belum ada scoring, belum ada trading. Yang jalan:
-supervisor + watchdog, SQLite, Telegram ops, PumpPortal ingest (launch + migrasi), GMGN enrichment,
-cheap gates + hard gates, tabel `candidates` terisi, alert Telegram untuk yang lolos.
+Status: **Fase 2** (paper trading). Ingest → gates → scoring → routing → risk gate → paper broker → position manager,
+semuanya dengan harga nyata dari GMGN tapi tanpa transaksi on-chain. Grafik balance di dashboard = equity paper.
+
+## Alur fase 2
+
+```
+candidates (lolos hard gates)
+   -> scorer: 0-100 dari momentum (buy pressure, swap rate, price change) · growth (kecepatan holder/mcap vs cek sebelumnya)
+             · quality (top10, bundler, sniper hold, dev, fresh wallet, smart money, serial launcher, entrapment)
+             · context (tahap bonding, socials, jumlah holder, band mcap). Bobot SCORE_W_* bisa diubah live.
+   -> router: >= SCORE_HIGH → FAST · [SCORE_LOW, SCORE_HIGH) & umur >= GREY_MIN_TOKEN_AGE_SEC → GREY · sisanya DROP
+   -> GREY: LLM review (LLM_LANE_ENABLED, butuh ANTHROPIC_API_KEY). JSON ketat, timeout → neutral, boost maks LLM_MAX_BOOST,
+            size dikali LLM_LANE_SIZE_MULT. Default OFF: grey = skip.
+   -> risk gate: kill/pause · MAX_OPEN_POSITIONS · posisi ganda · REENTRY_COOLDOWN_SEC · DAILY_LOSS_CAP_SOL · COOLDOWN_AFTER_LOSS_SEC
+   -> paper broker: fill = harga GMGN ± PAPER_SLIPPAGE_BPS, fee PAPER_FEE_BPS, konversi USD→SOL via harga WSOL GMGN
+   -> position manager (tiap POSITION_CHECK_SEC): dev_sold · holders_drop · sl · tp · trail · time  → SELL → trades + equity
+```
+
+Semua keputusan tersimpan: `decisions` (termasuk alasan skip), `orders`, `fills`, `positions` (meta: skor, komponen, peak), `trades`,
+`llm_reviews`. Itu bahan autopsy fase 5.
 
 ## Alur fase 1
 
@@ -54,6 +71,7 @@ tradoor_agent/
   scoring/ risk/ llm_review/ execution/ positions/ slow_loop/   (fase berikutnya)
 tests/test_phase1.py    replay test tanpa network: python -m tests.test_phase1
 tests/test_dashboard.py tes semua route dashboard: python -m tests.test_dashboard
+tests/test_phase2.py     replay buy → tp / sl paper: python -m tests.test_phase2
 deploy/
   install.sh       setup venv + systemd di VPS, aman dijalankan ulang
   tradoor-agent.service
@@ -120,7 +138,7 @@ dan akses lewat SSH tunnel: `ssh -L 8787:127.0.0.1:8787 root@IP-VPS` lalu buka `
 
 ## Kontrol
 
-Telegram (owner saja): `/status` `/watch` `/pause` `/resume` `/params` `/set K V` `/kill` (lalu `/kill confirm`) `/help`
+Telegram (owner saja): `/status` `/watch` `/positions` `/trades` `/pause` `/resume` `/params` `/set K V` `/kill` (lalu `/kill confirm`) `/help`
 
 Kill switch tanpa Telegram (misal bot Telegram-nya mati):
 
@@ -142,7 +160,7 @@ Selama file `data/KILL` ada, agent menolak start (exit code 3) dan systemd tidak
 
 0. Fondasi ✅
 1. Ingest (PumpPortal WS) + GMGN enrichment + hard gates → candidates ✅
-2. Scoring + routing + risk gate + llm_review → paper trade
+2. Scoring + routing + risk gate + llm_review → paper trade ✅
 3. Eksekusi (PumpPortal local tx): simulate → sign → send → confirm → reconcile; mode confirm dulu
 4. Position manager + emergency exit
 5. Slow loop: autopsy, LLM-lane vs rule-only, usulan param lewat backtest gate

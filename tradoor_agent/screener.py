@@ -18,7 +18,7 @@ from .ingest.pumpportal import PumpPortalIngest, dev_initial_buy
 from .models import Candidate, Lane, TokenEvent, TokenSnapshot
 
 # failing one of these twice in a row means the token's structure is bad; stop spending weight on it
-STRUCTURAL = {"renounced_mint", "renounced_freeze", "honeypot", "bundler", "entrapment", "dev_hold", "rat_trader"}
+STRUCTURAL = {"renounced_mint", "renounced_freeze", "honeypot", "bundler", "entrapment", "dev_hold", "rat_trader", "creator_created"}
 # gates a healthy token simply has not reached yet; failing only these is "not yet", not "bad"
 GROWTH = {"holders", "liquidity", "mcap_min"}
 CHECKS_PER_TICK = 5
@@ -174,7 +174,7 @@ class Screener(Component):
             max_top10=p("gate_max_top10"), max_dev_hold=p("gate_max_dev_hold"),
             max_bundler=p("gate_max_bundler"), max_rat=p("gate_max_rat"),
             max_snipers=p("gate_max_snipers"), max_sniper_hold=p("gate_max_sniper_hold"), max_entrapment=p("gate_max_entrapment"),
-            require_renounced=p("gate_require_renounced"),
+            require_renounced=p("gate_require_renounced"), max_creator_created=p("gate_max_creator_created"),
         )
         bad = failed(gates)
         e.last_failed = bad

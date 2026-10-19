@@ -76,7 +76,7 @@ async def main() -> None:
             fr = await (await http.get(f"{BASE}/api/frames")).json()
             assert len(fr["frames"]) == 8 and fr["frames"][0]["kind"] == "unknown"
             tr = await (await http.get(f"{BASE}/api/trades")).json()
-            assert tr == {"positions": [], "trades": []}
+            assert tr["positions"] == [] and tr["trades"] == []
             fn = await (await http.get(f"{BASE}/api/funnel?minutes=60")).json()
             assert fn["checks"] > 0 and fn["mints"] >= 3 and fn["passed_mints"] >= 1, fn
             gates = {g["gate"]: g for g in fn["funnel"]}

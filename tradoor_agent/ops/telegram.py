@@ -59,6 +59,8 @@ class TelegramOps(Component):
             "pause": self.cmd_pause,
             "resume": self.cmd_resume,
             "watch": self.cmd_watch,
+            "positions": self.cmd_positions,
+            "trades": self.cmd_trades,
             "params": self.cmd_params,
             "set": self.cmd_set,
             "kill": self.cmd_kill,
@@ -199,6 +201,34 @@ class TelegramOps(Component):
         self.log.warning("resumed by owner %s", update.effective_user.id)
         await update.message.reply_text("▶️ resumed")
 
+    async def cmd_positions(self, update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+        pos = await self.ctx.db.open_positions()
+        if not pos:
+            await update.message.reply_text("tidak ada posisi terbuka.")
+            return
+        now = time.time()
+        lines = []
+        for p in pos:
+            m = p.get("meta") or {}
+            ch = m.get("last_change")
+            lines.append(f"${m.get('symbol') or p['mint'][:6]} · {p['lane']} · {p['size_sol']:.3f} SOL · {('%+.1f%%' % (ch * 100)) if ch is not None else '–'} · {int((now - p['opened_at']) // 60)}m")
+        await update.message.reply_text("\n".join(lines))
+
+    async def cmd_trades(self, update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+        rows = await self.ctx.db.fetchall("SELECT t.mint, t.pnl_sol, t.pnl_pct, t.exit_reason, t.holding_sec, p.meta_json FROM trades t LEFT JOIN positions p ON p.id=t.position_id ORDER BY t.closed_at DESC LIMIT 10")
+        st = await self.ctx.db.trade_stats()
+        if not rows:
+            await update.message.reply_text("belum ada trade.")
+            return
+        lines = [f"total {st['trades']} · {st['wins']}W/{st['losses']}L · pnl {st['pnl_sol']:+.4f} SOL · streak {st['streak']:+d}"]
+        for r in rows:
+            try:
+                sym = json.loads(r["meta_json"] or "{}").get("symbol") or r["mint"][:6]
+            except json.JSONDecodeError:
+                sym = r["mint"][:6]
+            lines.append(f"${sym} · {r['exit_reason']} · {r['pnl_sol']:+.4f} SOL ({r['pnl_pct']:+.1f}%) · {int((r['holding_sec'] or 0) // 60)}m")
+        await update.message.reply_text("\n".join(lines))
+
     async def cmd_params(self, update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
         params = await self.ctx.db.all_params()
         if not params:
@@ -250,6 +280,7 @@ class TelegramOps(Component):
             "/pause   stop entry baru (posisi tetap di-manage)\n"
             "/resume  lanjut entry\n"
             "/watch   kandidat 1 jam terakhir (✅ lolos hard gates)\n"
+            "/positions posisi terbuka · /trades 10 trade terakhir\n"
             "/params  lihat override param\n"
             "/set K V override param live, misal /set gate_max_top10 0.25\n"
             "/kill    matiin agent (butuh /kill confirm)\n"

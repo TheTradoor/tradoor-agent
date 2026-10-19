@@ -43,6 +43,7 @@ def hard_gates(
     max_sniper_hold: float,
     max_entrapment: float,
     require_renounced: bool,
+    max_creator_created: int = 50,
 ) -> list[GateResult]:
     def le(name: str, v: float | int | None, limit: float, fmt=_pct) -> GateResult:
         if v is None:
@@ -69,6 +70,7 @@ def hard_gates(
         le("snipers", snap.sniper_count, max_snipers, fmt=str),
         le("sniper_hold", snap.sniper_hold_rate, max_sniper_hold),
         le("entrapment", snap.entrapment_rate, max_entrapment),
+        le("creator_created", snap.creator_created_count, max_creator_created, fmt=str),
         GateResult("honeypot", snap.honeypot is not True, detail="n/a" if snap.honeypot is None else str(snap.honeypot)),
     ]
     if require_renounced:

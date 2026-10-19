@@ -166,6 +166,7 @@
 <div class="coins-h">Scanning <span id="coins-n"></span></div>
 <div class="coins" id="coins"></div>
 
+<details id="det-trades"><summary>Trades</summary><div class="panel" id="trades" style="border:0;padding:0 0 8px"></div></details>
 <details><summary>Candidates</summary><div>
   <div class="row">
     <select id="f-lane"><option value="all">all</option><option value="screened">passed</option><option value="drop">failed</option></select>
@@ -313,9 +314,9 @@ async function refreshStatus(){
   if(openSections.params) renderParams(); if(openSections.diag) renderDiag();
 }
 /* ---------- bottom sections ---------- */
-const openSections={cands:false,params:false,frames:false,funnel:false,diag:false};
-document.querySelectorAll('details').forEach((d,i)=>{const k=['cands','params','frames','funnel','diag'][i];d.addEventListener('toggle',()=>{openSections[k]=d.open;if(d.open)refreshSection(k)})});
-async function refreshSection(k){ if(k==='cands') await refreshCands(); if(k==='params') renderParams(); if(k==='frames') await refreshFrames(); if(k==='funnel') await refreshFunnel(); if(k==='diag') renderDiag(); }
+const openSections={trades:false,cands:false,params:false,frames:false,funnel:false,diag:false};
+document.querySelectorAll('details').forEach((d,i)=>{const k=['trades','cands','params','frames','funnel','diag'][i];d.addEventListener('toggle',()=>{openSections[k]=d.open;if(d.open)refreshSection(k)})});
+async function refreshSection(k){ if(k==='trades') await refreshTrades(); if(k==='cands') await refreshCands(); if(k==='params') renderParams(); if(k==='frames') await refreshFrames(); if(k==='funnel') await refreshFunnel(); if(k==='diag') renderDiag(); }
 async function refreshFunnel(){
   const d=await api('/api/funnel?minutes='+$('#fn-min').value); if(!d) return;
   $('#fn-sum').textContent=`${d.checks} checks · ${d.mints} tokens (${d.indexed_mints} indexed by gmgn) · ${d.passed_mints} passed`;
@@ -338,7 +339,7 @@ async function refreshCands(){
   const seen=new Map(); for(const r of d.rows){ if(!seen.has(r.mint)) seen.set(r.mint,r); }
   $('#c-count').textContent=`${seen.size} tokens · ${d.rows.length} checks`;
   const rows=[...seen.values()];
-  $('#cands').innerHTML=rows.length? rows.map(r=>`<div class="cand ${r.lane==='screened'?'pass':'drop'}" onclick="openCand(${r.id})"><div class="top"><b>$${esc(r.symbol||r.mint.slice(0,6))} <span style="color:var(--mut);font-weight:400">${age(r.age_sec)}${r.migrated?' · migrated':r.progress!=null?' · bond '+pct(r.progress):''}</span></b><span style="color:var(--mut)">${tm(r.ts)}</span></div><div class="meta"><span>mcap <b>${fmtUsd(r.mcap_usd)}</b></span><span>liq ${fmtUsd(r.liquidity_usd)}</span><span>holders ${r.holders??'n/a'}</span><span>top10 ${pct(r.top10)}</span><span>dev ${pct(r.dev)}</span><span>bundler ${pct(r.bundler)}</span><span>snipers ${r.snipers??'n/a'} (${pct(r.sniper_hold)})</span><span>trap ${pct(r.entrapment)}</span><span>smart ${r.smart??0}/${r.renowned??0}</span><span>1m ${r.buys_1m??0}b/${r.sells_1m??0}s</span></div><div class="reason">${esc(r.reason)}</div></div>`).join('') : '<div class="empty">belum ada kandidat di rentang ini</div>';
+  $('#cands').innerHTML=rows.length? rows.map(r=>`<div class="cand ${r.lane==='screened'?'pass':'drop'}" onclick="openCand(${r.id})"><div class="top"><b>$${esc(r.symbol||r.mint.slice(0,6))} <span style="color:var(--mut);font-weight:400">${age(r.age_sec)}${r.migrated?' · migrated':r.progress!=null?' · bond '+pct(r.progress):''}</span>${r.score?` <span style="font-weight:600;color:${r.route==='fast'?'var(--ok)':r.route==='grey'?'var(--warn)':'var(--mut)'}">· score ${Math.round(r.score)} → ${esc((r.route||'').toUpperCase())}</span>`:''}</b><span style="color:var(--mut)">${tm(r.ts)}</span></div><div class="meta"><span>mcap <b>${fmtUsd(r.mcap_usd)}</b></span><span>liq ${fmtUsd(r.liquidity_usd)}</span><span>holders ${r.holders??'n/a'}</span><span>top10 ${pct(r.top10)}</span><span>dev ${pct(r.dev)}</span><span>bundler ${pct(r.bundler)}</span><span>snipers ${r.snipers??'n/a'} (${pct(r.sniper_hold)})</span><span>trap ${pct(r.entrapment)}</span><span>smart ${r.smart??0}/${r.renowned??0}</span><span>1m ${r.buys_1m??0}b/${r.sells_1m??0}s</span></div><div class="reason">${esc(r.reason)}</div></div>`).join('') : '<div class="empty">belum ada kandidat di rentang ini</div>';
 }
 $('#f-lane').onchange=$('#f-min').onchange=refreshCands;
 async function openCand(id){
@@ -347,7 +348,7 @@ async function openCand(id){
   $('#dr-title').textContent=`$${b.symbol||d.mint.slice(0,6)} · ${d.lane} · ${tm(d.ts)}`;
   $('#dr-body').innerHTML=`<div style="margin-bottom:10px;font-size:11px"><a href="https://gmgn.ai/sol/token/${d.mint}" target="_blank" rel="noopener">gmgn ↗</a> · <a href="https://pump.fun/coin/${d.mint}" target="_blank" rel="noopener">pump.fun ↗</a> · <span style="color:var(--mut);word-break:break-all">${d.mint}</span></div>
     <div class="gates">${(d.gates||[]).map(g=>`<div class="g ${g.passed?'ok':'bad'}">${g.passed?'✓':'✗'} ${esc(g.name)} <span style="color:var(--mut)">${esc(g.detail||'')}</span></div>`).join('')}</div>
-    <div class="kv" style="margin-top:12px">${keys.map(k=>`<div>${esc(k)}</div><div>${esc(typeof b[k]==='number'&&!Number.isInteger(b[k])?+b[k].toFixed(6):b[k])}</div>`).join('')}</div>`;
+    <div class="kv" style="margin-top:12px">${keys.map(k=>`<div>${esc(k)}</div><div>${esc(typeof b[k]==='object'&&b[k]!==null?JSON.stringify(b[k]):typeof b[k]==='number'&&!Number.isInteger(b[k])?+b[k].toFixed(6):b[k])}</div>`).join('')}</div>`;
   $('#drawer').classList.add('open');
 }
 function closeDrawer(){$('#drawer').classList.remove('open')}
@@ -364,6 +365,12 @@ async function refreshFrames(){
   $('#kinds').innerHTML=Object.entries(kinds).map(([k,v])=>`<span class="stat" style="${k==='unknown'?'color:var(--warn)':''}">${k} ${v}</span>`).join('')||'<span class="empty">no frames yet</span>';
   $('#frames').innerHTML=d.frames.map(f=>`<div class="frame"><b>${esc(f.kind)}</b> ${tm(f.ts)} · ${esc(f.raw)}</div>`).join('')||'';
 }
+async function refreshTrades(){
+  const d=await api('/api/trades'); if(!d) return;
+  const pos=d.positions||[], tr=d.trades||[];
+  const chg=v=>v==null?'–':`<span style="color:${v>=0?'var(--ok)':'var(--bad)'}">${(v>=0?'+':'')+(v*100).toFixed(1)}%</span>`;
+  $('#trades').innerHTML = (pos.length||tr.length)? `<h2>open positions <span>${pos.length}</span></h2>${pos.length?`<table><thead><tr><th>token</th><th>lane</th><th>score</th><th>size</th><th>now</th><th>peak</th><th>held</th></tr></thead><tbody>${pos.map(p=>`<tr><td><b>$${esc(p.symbol||p.mint.slice(0,6))}</b></td><td>${p.lane}</td><td>${p.score!=null?Math.round(p.score):'–'}</td><td>${Number(p.size_sol).toFixed(3)}</td><td>${chg(p.last_change)}</td><td>${chg(p.peak_change)}</td><td>${age(Math.floor(status.now-p.opened_at))}</td></tr>`).join('')}</tbody></table>`:'<div class="empty">none</div>'}<h2 style="margin-top:12px">closed trades <span>${tr.length}</span></h2>${tr.length?`<table><thead><tr><th>token</th><th>lane</th><th>score</th><th>pnl</th><th>%</th><th>held</th><th>exit</th><th>when</th></tr></thead><tbody>${tr.map(t=>`<tr><td><b>$${esc(t.symbol||t.mint.slice(0,6))}</b></td><td>${t.lane}</td><td>${t.score!=null?Math.round(t.score):'–'}</td><td style="color:${t.pnl_sol>=0?'var(--ok)':'var(--bad)'}">${(t.pnl_sol>=0?'+':'')+Number(t.pnl_sol).toFixed(4)}</td><td>${t.pnl_pct==null?'':(t.pnl_pct>=0?'+':'')+Number(t.pnl_pct).toFixed(1)}</td><td>${age(Math.floor(t.holding_sec||0))}</td><td>${esc(t.exit_reason||'')}</td><td style="color:var(--mut)">${tm(t.closed_at)}</td></tr>`).join('')}</tbody></table>`:'<div class="empty">none yet</div>'}` : '<div class="empty">no paper trades yet · the trader enters when a candidate scores ≥ SCORE_HIGH and the risk gate allows it</div>';
+}
 function renderDiag(){
   const s=status; if(!s) return; const w=s.ws||{}, g=s.gmgn||{};
   $('#diag').innerHTML=`<div class="kv">
@@ -379,13 +386,15 @@ function renderDiag(){
    <div>candidates 24h</div><div>${esc(JSON.stringify(s.candidates_24h))}</div><div>version</div><div>v${esc(s.version)} · pid ${s.pid}</div></div>`;
 }
 /* ---------- loop ---------- */
-let slow=0;
+let slow=0, tradesAutoOpened=false;
 async function tick(){
   if(document.hidden) return;
   try{
     if(slow%5===0){ await refreshTimeline(); await refreshEquity(); }
     await refreshStatus(); await refreshLog();
     if(openSections.cands && slow%5===0) await refreshCands();
+    if(openSections.trades) await refreshTrades();
+    if(!tradesAutoOpened && status && (status.open_positions>0 || (status.trade_stats&&status.trade_stats.trades>0))){ tradesAutoOpened=true; const dt=$('#det-trades'); if(dt&&!dt.open){ dt.open=true; } }
     if(openSections.frames) await refreshFrames();
   }catch(e){ console.error(e); }
   slow++;

@@ -162,7 +162,7 @@ class WebDashboard(Component):
             "heartbeats_age_sec": {k: int(now - v) for k, v in st.heartbeats.items()},
             "ws": ws, "gmgn": gmgn, "watchlist": watch,
             "params": ctx.params.snapshot(),
-            "settings": {k: getattr(s, k) for k in dir(s) if k.startswith(("gate_", "cheap_", "screen_", "score_", "llm_", "position_", "max_open", "daily_loss")) and not callable(getattr(s, k))},
+            "settings": {k: getattr(s, k) for k in dir(s) if k.startswith(("gate_", "cheap_", "screen_", "score_", "llm_", "position_", "max_open", "daily_loss", "exit_", "paper_", "cooldown", "reentry")) and not callable(getattr(s, k))},
             "open_positions": await ctx.db.open_positions_count(),
             "pnl_today_sol": await ctx.db.realized_pnl_today(),
             "candidates_24h": await ctx.db.candidate_counts_today(),
@@ -172,7 +172,7 @@ class WebDashboard(Component):
         minutes = _int(request.query.get("minutes"), 60, 1, 7 * 1440)
         limit = _int(request.query.get("limit"), 200, 1, 1000)
         lane = request.query.get("lane", "all")
-        sql = "SELECT id, ts, mint, lane, reason, token_age_sec, breakdown_json FROM candidates WHERE ts > ?"
+        sql = "SELECT id, ts, mint, lane, reason, token_age_sec, score, breakdown_json FROM candidates WHERE ts > ?"
         args: list = [time.time() - minutes * 60]
         if lane in ("screened", "drop"):
             sql += " AND lane = ?"
@@ -185,6 +185,7 @@ class WebDashboard(Component):
             b = _loads(r["breakdown_json"])
             out.append({
                 "id": r["id"], "ts": r["ts"], "mint": r["mint"], "lane": r["lane"], "reason": r["reason"],
+                "score": r["score"], "route": b.get("route"),
                 "age_sec": int(r["token_age_sec"] or 0), "symbol": b.get("symbol"),
                 "mcap_usd": b.get("mcap_usd"), "liquidity_usd": b.get("liquidity_usd"), "holders": b.get("holder_count"),
                 "top10": b.get("top10_rate"), "dev": b.get("dev_hold_rate", b.get("creator_hold_rate")),
@@ -223,9 +224,26 @@ class WebDashboard(Component):
         return _json({"frames": frames})
 
     async def api_trades(self, request: web.Request) -> web.Response:
-        pos = await self.ctx.db.fetchall("SELECT id, mint, lane, opened_at, entry_price_sol, size_sol, tokens, status FROM positions WHERE status IN ('open','closing') ORDER BY opened_at DESC LIMIT 50")
-        trades = await self.ctx.db.fetchall("SELECT id, mint, lane, day, closed_at, holding_sec, pnl_sol, pnl_pct, exit_reason FROM trades ORDER BY closed_at DESC LIMIT 100")
-        return _json({"positions": [dict(r) for r in pos], "trades": [dict(r) for r in trades]})
+        pos = await self.ctx.db.open_positions()
+        for p in pos:
+            m = p.get("meta") or {}
+            p["symbol"] = m.get("symbol")
+            p["score"] = m.get("score")
+            p["last_change"] = m.get("last_change")
+            p["peak_change"] = (float(m["peak_price_sol"]) / float(p["entry_price_sol"]) - 1.0) if m.get("peak_price_sol") and p.get("entry_price_sol") else None
+            p["mcap_usd"] = m.get("mcap_usd")
+            p.pop("meta", None)
+        trades = await self.ctx.db.fetchall(
+            "SELECT t.id, t.mint, t.lane, t.day, t.closed_at, t.holding_sec, t.pnl_sol, t.pnl_pct, t.exit_reason, p.meta_json, p.size_sol "
+            "FROM trades t LEFT JOIN positions p ON p.id = t.position_id ORDER BY t.closed_at DESC LIMIT 100")
+        out = []
+        for r in trades:
+            d = dict(r)
+            m = _loads(d.pop("meta_json"))
+            d["symbol"] = m.get("symbol")
+            d["score"] = m.get("score")
+            out.append(d)
+        return _json({"positions": pos, "trades": out})
 
     _funnel_cache: tuple[float, dict] | None = None
 

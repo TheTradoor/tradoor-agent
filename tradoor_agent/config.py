@@ -78,7 +78,26 @@ class Settings(BaseSettings):
     gate_max_snipers: int = 15              # wallet_tags_stat.sniper_wallets
     gate_max_sniper_hold: float = 0.30      # stat.top70_sniper_hold_rate
     gate_max_entrapment: float = 0.10       # stat.top_entrapment_trader_percentage (known trap wallets)
+    gate_max_creator_created: int = 50      # stat.creator_created_count: serial launchers above this are dropped
     gate_require_renounced: bool = True
+
+    # --- scoring (phase 2); weights are relative, components 0-1 ---
+    score_w_momentum: float = 30.0
+    score_w_growth: float = 25.0
+    score_w_quality: float = 30.0
+    score_w_context: float = 15.0
+
+    # --- paper trading (dry_run) ---
+    paper_slippage_bps: float = 150.0       # price impact + priority, each side
+    paper_fee_bps: float = 100.0            # pump.fun 1%
+    exit_tp_pct: float = 0.15               # take profit vs entry
+    exit_sl_pct: float = 0.10               # stop loss vs entry
+    exit_trail_arm_pct: float = 0.10        # once up this much, trailing stop is armed
+    exit_trail_pct: float = 0.06            # trail distance from peak
+    exit_max_hold_sec: int = 900            # time stop
+    exit_holders_drop_pct: float = 0.20     # holders fell this much from peak -> exit
+    position_check_sec: int = 5             # manager loop interval (GMGN cache makes real refresh ~15s)
+    reentry_cooldown_sec: int = 1800        # no second entry on the same mint within this window
 
     # --- wallet (confirm / live only) ---
     wallet_private_key: str = ""            # base58; use a dedicated hot wallet
@@ -92,7 +111,7 @@ class Settings(BaseSettings):
     llm_lane_size_mult: float = 0.5         # grey-zone entries get smaller size
 
     # --- routing ---
-    score_high: float = 80.0                # >= high -> fast lane
+    score_high: float = 70.0                # >= high -> fast lane (70 while collecting paper data; tighten later)
     score_low: float = 50.0                 # < low -> drop ; between -> grey zone
     grey_min_token_age_sec: int = 180       # grey zone only for tokens at least this old
 
@@ -148,6 +167,8 @@ class Settings(BaseSettings):
     def problems(self) -> list[str]:
         """Sanity check. Empty list means the config is runnable."""
         p: list[str] = []
+        if self.mode in (Mode.CONFIRM, Mode.LIVE):
+            p.append("MODE confirm/live belum tersedia sebelum fase 3 (eksekusi on-chain); pakai dry_run")
         if self.mode in (Mode.CONFIRM, Mode.LIVE) and not self.wallet_private_key:
             p.append("WALLET_PRIVATE_KEY kosong tapi MODE bukan dry_run")
         if self.mode == Mode.LIVE and self.i_understand_live_trading.strip().lower() != "yes":
@@ -203,4 +224,5 @@ class Settings(BaseSettings):
             "max_open_positions": str(self.max_open_positions),
             "daily_loss_cap_sol": str(self.daily_loss_cap_sol),
             "score_low/high": f"{self.score_low}/{self.score_high}",
+            "paper": f"size {self.position_size_sol} SOL · tp {self.exit_tp_pct:.0%} · sl {self.exit_sl_pct:.0%} · max {self.max_open_positions} pos",
         }

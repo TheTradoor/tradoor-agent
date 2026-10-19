@@ -280,6 +280,87 @@ class Database:
             (c.ts, c.mint, c.score, json.dumps(c.breakdown, default=str), json.dumps([asdict(g) for g in c.gates], default=str), c.token_age_sec, c.lane.value, c.reason),
         )
 
+    async def update_candidate_score(self, cid: int, score: float, breakdown: dict) -> None:
+        await self.execute("UPDATE candidates SET score=?, breakdown_json=? WHERE id=?", (score, json.dumps(breakdown, default=str), cid))
+
+    # ------------------------------------------------------------ trading (paper + live share these)
+
+    async def insert_decision(self, d, risk: dict | None = None) -> int:
+        """d: models.Decision"""
+        return await self.execute(
+            "INSERT INTO decisions(ts, mint, candidate_id, action, lane, size_sol, reason, risk_json) VALUES(?,?,?,?,?,?,?,?)",
+            (d.ts, d.mint, d.candidate_id, d.action, d.lane.value, d.size_sol, d.reason, json.dumps(risk or {}, default=str)),
+        )
+
+    async def insert_order(self, o, position_id: int | None = None) -> int:
+        """o: models.Order"""
+        return await self.execute(
+            "INSERT INTO orders(ts, mint, side, mode, size_sol, expected_price_sol, status, tx_sig, error, idempotency_key, position_id) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            (o.ts, o.mint, o.side.value, o.mode, o.size_sol, o.expected_price_sol, o.status.value, o.tx_sig, o.error, o.idempotency_key, position_id),
+        )
+
+    async def update_order(self, oid: int, status: str, tx_sig: str = "", error: str = "", position_id: int | None = None) -> None:
+        await self.execute(
+            "UPDATE orders SET status=?, tx_sig=COALESCE(NULLIF(?, ''), tx_sig), error=?, position_id=COALESCE(?, position_id) WHERE id=?",
+            (status, tx_sig, error, position_id, oid),
+        )
+
+    async def insert_fill(self, order_id: int, tokens: float, sol: float, price_sol: float, fee_sol: float, slippage_bps: float) -> int:
+        import time
+        return await self.execute(
+            "INSERT INTO fills(order_id, ts, tokens, sol, price_sol, fee_sol, slippage_bps) VALUES(?,?,?,?,?,?,?)",
+            (order_id, time.time(), tokens, sol, price_sol, fee_sol, slippage_bps),
+        )
+
+    async def insert_position(self, p, meta: dict | None = None) -> int:
+        """p: models.Position"""
+        return await self.execute(
+            "INSERT INTO positions(mint, lane, opened_at, entry_price_sol, size_sol, tokens, status, meta_json) VALUES(?,?,?,?,?,?,?,?)",
+            (p.mint, p.lane.value, p.opened_at, p.entry_price_sol, p.size_sol, p.tokens, p.status.value, json.dumps(meta or {}, default=str)),
+        )
+
+    async def update_position_meta(self, pid: int, meta: dict, status: str | None = None) -> None:
+        if status:
+            await self.execute("UPDATE positions SET meta_json=?, status=? WHERE id=?", (json.dumps(meta, default=str), status, pid))
+        else:
+            await self.execute("UPDATE positions SET meta_json=? WHERE id=?", (json.dumps(meta, default=str), pid))
+
+    async def close_position(self, pid: int, closed_at: float, meta: dict) -> None:
+        await self.execute("UPDATE positions SET status='closed', closed_at=?, meta_json=? WHERE id=?", (closed_at, json.dumps(meta, default=str), pid))
+
+    async def insert_trade(self, position_id: int, mint: str, lane: str, closed_at: float, holding_sec: float, pnl_sol: float, pnl_pct: float, exit_reason: str) -> int:
+        tid = await self.execute(
+            "INSERT INTO trades(position_id, mint, lane, day, closed_at, holding_sec, pnl_sol, pnl_pct, exit_reason) VALUES(?,?,?,?,?,?,?,?,?)",
+            (position_id, mint, lane, self.today(), closed_at, holding_sec, pnl_sol, pnl_pct, exit_reason),
+        )
+        await self.refresh_daily_stats()
+        return tid
+
+    async def open_positions(self) -> list[dict]:
+        rows = await self.fetchall("SELECT * FROM positions WHERE status IN ('open','closing') ORDER BY opened_at")
+        out = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["meta"] = json.loads(d.pop("meta_json") or "{}")
+            except json.JSONDecodeError:
+                d["meta"] = {}
+            out.append(d)
+        return out
+
+    async def has_open_position(self, mint: str) -> bool:
+        row = await self.fetchone("SELECT 1 FROM positions WHERE mint=? AND status IN ('open','closing') LIMIT 1", (mint,))
+        return row is not None
+
+    async def last_trade_ts_for_mint(self, mint: str) -> float | None:
+        row = await self.fetchone("SELECT MAX(closed_at) AS t FROM trades WHERE mint=?", (mint,))
+        return float(row["t"]) if row and row["t"] is not None else None
+
+    async def last_loss_ts(self) -> float | None:
+        row = await self.fetchone("SELECT MAX(closed_at) AS t FROM trades WHERE pnl_sol < 0")
+        return float(row["t"]) if row and row["t"] is not None else None
+
     async def candidate_counts_today(self) -> dict[str, int]:
         import time
         rows = await self.fetchall(

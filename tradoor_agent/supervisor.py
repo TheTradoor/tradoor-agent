@@ -17,6 +17,7 @@ from .bus import EventBus
 from .component import Component, Context
 from .config import Settings
 from .db import Database
+from .execution.paper import PaperBroker
 from .housekeeper import Housekeeper
 from .ingest.gmgn import GmgnClient
 from .ingest.pumpportal import PumpPortalIngest
@@ -24,8 +25,11 @@ from .logging_setup import setup_logging
 from .ops.telegram import TelegramOps
 from .ops.web import WebDashboard
 from .params import ParamStore
+from .positions.manager import PositionManager
 from .screener import Screener
+from .scoring.scorer import Scorer
 from .state import RuntimeState
+from .trader import Trader
 
 log = logging.getLogger("agent.supervisor")
 
@@ -53,8 +57,11 @@ def build_components(ctx: Context) -> list[Component]:
         screener = Screener(ctx, gmgn, ingest)
         ctx.gmgn, ctx.screener = gmgn, screener
         comps.append(screener)
+        # phase 2: score -> risk -> paper broker -> position manager (all modes use the paper broker until phase 3)
+        broker = PaperBroker(ctx, gmgn)
+        comps += [Scorer(ctx), Trader(ctx, broker), PositionManager(ctx, gmgn, broker)]
     else:
-        log.warning("GMGN_API_KEY kosong: screener tidak dijalankan, hanya ingest")
+        log.warning("GMGN_API_KEY kosong: screener/scorer/trader tidak dijalankan, hanya ingest")
     if ctx.settings.web_enabled:
         comps.append(WebDashboard(ctx))
     comps.append(TelegramOps(ctx))   # last: its startup message can include the dashboard URL
