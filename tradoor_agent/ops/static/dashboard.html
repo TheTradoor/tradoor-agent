@@ -316,18 +316,18 @@ document.querySelectorAll('details').forEach((d,i)=>{const k=['cands','params','
 async function refreshSection(k){ if(k==='cands') await refreshCands(); if(k==='params') renderParams(); if(k==='frames') await refreshFrames(); if(k==='funnel') await refreshFunnel(); if(k==='diag') renderDiag(); }
 async function refreshFunnel(){
   const d=await api('/api/funnel?minutes='+$('#fn-min').value); if(!d) return;
-  $('#fn-sum').textContent=`${d.checks} checks · ${d.mints} tokens · ${d.passed_mints} passed`;
+  $('#fn-sum').textContent=`${d.checks} checks · ${d.mints} tokens (${d.indexed_mints} indexed by gmgn) · ${d.passed_mints} passed`;
   const m=d.metrics||{}; const f=(k,fmt)=>m[k]?`${fmt(m[k].p50)} / ${fmt(m[k].p90)} / ${fmt(m[k].max)}`:'–';
   const pc=v=>v==null?'–':(v*100).toFixed(0)+'%'; const n=v=>v==null?'–':String(Math.round(v));
   $('#funnel').innerHTML=`
    <table><thead><tr><th>gate</th><th>evaluated</th><th>failed</th><th>fail %</th><th>n/a</th><th>one gate away</th></tr></thead><tbody>
    ${d.funnel.map(g=>{const oa=(d.one_gate_away.find(x=>x[0]===g.gate)||[0,0])[1];return `<tr><td>${esc(g.gate)}</td><td>${g.evaluated}</td><td>${g.failed}</td><td style="${g.fail_pct>80?'color:var(--bad)':g.fail_pct>40?'color:var(--warn)':''}">${g.fail_pct==null?'–':g.fail_pct+'%'}</td><td style="${g.na>g.evaluated?'color:var(--warn)':''}">${g.na}</td><td>${oa||''}</td></tr>`}).join('')}
    </tbody></table>
-   <div class="empty" style="padding:10px 0 4px">latest check per token · p50 / p90 / max</div>
+   <div class="empty" style="padding:10px 0 4px">latest check per indexed token · p50 / p90 / max</div>
    <div class="kv"><div>holders</div><div>${f('holders',n)}</div><div>mcap</div><div>${f('mcap',fmtUsd)}</div><div>liquidity</div><div>${f('liq',fmtUsd)}</div><div>top10</div><div>${f('top10',pc)}</div><div>bundler</div><div>${f('bundler',pc)}</div><div>insider</div><div>${f('insider',pc)}</div><div>dev</div><div>${f('dev',pc)}</div><div>snipers</div><div>${f('snipers',n)}</div><div>smart wallets</div><div>${f('smart',n)}</div></div>
    <div class="empty" style="padding:12px 0 4px">highest mcap seen · what blocked it</div>
    <table><thead><tr><th>token</th><th>mcap</th><th>holders</th><th class="hide-m">top10</th><th class="hide-m">bundler</th><th class="hide-m">smart</th><th>blocked by</th></tr></thead><tbody>
-   ${d.top_mcap.map(v=>`<tr style="cursor:pointer" onclick="openCand(${v.id})"><td><b>$${esc(v.symbol||v.mint.slice(0,6))}</b></td><td>${fmtUsd(v.mcap)}</td><td>${v.holders??'–'}</td><td class="hide-m">${pc(v.top10)}</td><td class="hide-m">${pc(v.bundler)}</td><td class="hide-m">${v.smart??'–'}</td><td style="${v.failed.length?'':'color:var(--ok)'}">${v.failed.length?esc(v.failed.join(', ')):'PASS'}</td></tr>`).join('')}
+   ${d.top_mcap.map(v=>`<tr style="cursor:pointer" onclick="openCand(${v.id})"><td><b>$${esc(v.symbol||v.mint.slice(0,6))}</b></td><td>${fmtUsd(v.mcap)}</td><td>${v.holders??'–'}</td><td class="hide-m">${pc(v.top10)}</td><td class="hide-m">${pc(v.bundler)}</td><td class="hide-m">${v.smart??'–'}</td><td style="${v.failed.length?'':'color:var(--ok)'}">${v.failed.length?esc((v.failed_detail||v.failed).join(' · ')):'PASS'}</td></tr>`).join('')}
    </tbody></table>`;
 }
 $('#fn-min').onchange=refreshFunnel;

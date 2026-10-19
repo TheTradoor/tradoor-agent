@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     gmgn_timeout_sec: float = 6.0
 
     # --- screener (phase 1) ---
-    screen_first_check_sec: int = 20        # wait this long after launch before first GMGN check
+    screen_first_check_sec: int = 45        # GMGN needs ~30-40s to index a fresh launch; earlier checks return zeros
     screen_recheck_sec: int = 30            # recheck interval while on watchlist
     screen_max_age_sec: int = 1800          # drop from watchlist after this age
     screen_max_watchlist: int = 150
@@ -71,8 +71,8 @@ class Settings(BaseSettings):
     gate_min_liquidity_usd: float = 3000.0
     gate_min_mcap_usd: float = 8000.0
     gate_max_mcap_usd: float = 250000.0
-    gate_max_top10: float = 0.30
-    gate_max_dev_hold: float = 0.10
+    gate_max_top10: float = 0.45            # early pump.fun runners routinely sit at 30-45%
+    gate_max_dev_hold: float = 0.15
     gate_max_bundler: float = 0.20
     gate_max_rat: float = 0.20
     gate_max_insider: float = 0.20

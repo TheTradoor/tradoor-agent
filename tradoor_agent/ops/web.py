@@ -263,7 +263,9 @@ class WebDashboard(Component):
                    "symbol": b.get("symbol"), "mcap": b.get("mcap_usd"), "holders": b.get("holder_count"), "liq": b.get("liquidity_usd"),
                    "top10": b.get("top10_rate"), "bundler": b.get("bundler_rate"), "insider": b.get("insider_rate"), "snipers": b.get("sniper_count"),
                    "dev": b.get("dev_hold_rate", b.get("creator_hold_rate")), "smart": b.get("smart_wallets"),
-                   "failed": [g.get("name") for g in gates if not g.get("passed")]}
+                   "indexed": bool(b.get("mcap_usd")) and (b.get("holder_count") or 0) > 1,
+                   "failed": [g.get("name") for g in gates if not g.get("passed")],
+                   "failed_detail": [f"{g.get('name')} {str(g.get('detail') or '').split(' <= ')[0].split(' >= ')[0]}" for g in gates if not g.get("passed")]}
             if r["mint"] not in latest:
                 latest[r["mint"]] = rec
             m = rec["mcap"] or 0
@@ -275,8 +277,10 @@ class WebDashboard(Component):
             funnel.append({"gate": n, "evaluated": ev, "failed": gate_fail.get(n, 0),
                            "fail_pct": round(gate_fail.get(n, 0) / ev * 100, 1) if ev else None, "na": gate_na.get(n, 0)})
 
+        indexed = {m: v for m, v in latest.items() if v["indexed"]}
+
         def pcts(key):
-            vals = sorted(v[key] for v in latest.values() if isinstance(v.get(key), (int, float)))
+            vals = sorted(v[key] for v in indexed.values() if isinstance(v.get(key), (int, float)))
             if not vals:
                 return None
             q = lambda f: vals[min(len(vals) - 1, int(f * (len(vals) - 1)))]  # noqa: E731
@@ -288,7 +292,7 @@ class WebDashboard(Component):
         for v in latest.values():
             if len(v["failed"]) == 1:
                 one_away[v["failed"][0]] = one_away.get(v["failed"][0], 0) + 1
-        out = {"minutes": minutes, "checks": len(rows), "mints": len(latest),
+        out = {"minutes": minutes, "checks": len(rows), "mints": len(latest), "indexed_mints": len(indexed),
                "passed_mints": sum(1 for v in best.values() if v["lane"] == "screened"),
                "funnel": funnel, "metrics": metrics, "top_mcap": top,
                "one_gate_away": sorted(one_away.items(), key=lambda kv: -kv[1])}
