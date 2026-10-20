@@ -59,7 +59,7 @@ def build_components(ctx: Context) -> list[Component]:
         comps.append(screener)
         # phase 2: score -> risk -> paper broker -> position manager (all modes use the paper broker until phase 3)
         broker = PaperBroker(ctx, gmgn)
-        comps += [Scorer(ctx), Trader(ctx, broker), PositionManager(ctx, gmgn, broker)]
+        comps += [Scorer(ctx), Trader(ctx, broker, ingest), PositionManager(ctx, gmgn, broker, ingest)]
     else:
         log.warning("GMGN_API_KEY kosong: screener/scorer/trader tidak dijalankan, hanya ingest")
     if ctx.settings.web_enabled:

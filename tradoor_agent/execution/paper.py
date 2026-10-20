@@ -56,15 +56,21 @@ class PaperBroker:
 
     # ------------------------------------------------------------ sell
 
-    async def sell(self, pos: dict, price_usd: float, reason: str, extra: dict | None = None) -> dict | None:
-        """Close a paper position at price_usd. Returns the trade summary, or None when it cannot price."""
+    async def sell(self, pos: dict, price_usd: float | None, reason: str, extra: dict | None = None, *, price_sol: float | None = None) -> dict | None:
+        """Close a paper position. Price either as USD (GMGN) or directly in SOL per token (trade ticks).
+        Returns the trade summary, or None when it cannot price."""
         p = self.ctx.p
         sol_usd = await self._sol_usd()
-        if not sol_usd or not price_usd or price_usd <= 0:
+        if price_sol is None:
+            if not sol_usd or not price_usd or price_usd <= 0:
+                return None
+            price_sol = price_usd / sol_usd
+        elif price_sol <= 0:
             return None
+        if price_usd is None and sol_usd:
+            price_usd = price_sol * sol_usd
         slip = float(p("paper_slippage_bps")) / 10_000
         fee = float(p("paper_fee_bps")) / 10_000
-        price_sol = price_usd / sol_usd
         fill_price_sol = price_sol * (1 - slip)
         gross = pos["tokens"] * fill_price_sol
         fee_sol = gross * fee

@@ -74,13 +74,26 @@ def unit_tests() -> None:
     # missing data is neutral, never a crash
     s4, _ = score_candidate({"symbol": "X"}, None, time.time(), weights)
     assert 0 <= s4 <= 100
+    # entry filters
+    from tradoor_agent.trader import Trader
+    class _P:  # minimal ctx.p stand-in
+        def __init__(self): self.v = dict(entry_max_chase_1m=0.25, entry_max_chase_5m=1.0, entry_min_holders=40, entry_max_sell_ratio_1m=0.55, entry_min_swaps_1m=8)
+        def __call__(self, k): return self.v[k]
+    tr = Trader.__new__(Trader); tr.ctx = type("C", (), {"p": _P()})()
+    assert tr._entry_filter(b) is None
+    assert tr._entry_filter({**b, "price_change_1m": 0.40}).startswith("chase_1m")
+    assert tr._entry_filter({**b, "holder_count": 12}).startswith("holders")
+    assert tr._entry_filter({**b, "buys_1m": 3, "sells_1m": 2}).startswith("quiet")
+    assert tr._entry_filter({**b, "buys_1m": 4, "sells_1m": 9}).startswith("distribution")
+    assert tr._entry_filter({"symbol": "X"}) == "quiet 0 swaps/1m"
     print("unit tests OK")
 
 
 async def integration() -> None:
     tmp = Path(tempfile.mkdtemp(prefix="tradoor-p2-"))
     settings = Settings(_env_file=None, mode=Mode.DRY_RUN, data_dir=tmp, gmgn_api_key="fake", screen_first_check_sec=0, screen_recheck_sec=1,
-                        position_check_sec=1, score_high=70, exit_tp_pct=0.15, exit_sl_pct=0.10, position_size_sol=0.1, max_open_positions=2)
+                        position_check_sec=1, score_high=70, exit_tp_pct=0.15, exit_sl_pct=0.10, position_size_sol=0.1, max_open_positions=2,
+                        pumpportal_api_key="test", tick_pricing=True, tick_stale_sec=2)
     db = Database(settings.db_path, settings.timezone)
     await db.open()
     state, bus = RuntimeState(mode=settings.mode), EventBus()
@@ -89,7 +102,7 @@ async def integration() -> None:
     gm = PricedGmgn()
     broker = PaperBroker(ctx, gm)
     ingest = PumpPortalIngest(ctx, message_source=frames())
-    comps = [ingest, Screener(ctx, gm, ingest), Scorer(ctx), Trader(ctx, broker), PositionManager(ctx, gm, broker)]
+    comps = [ingest, Screener(ctx, gm, ingest), Scorer(ctx), Trader(ctx, broker, ingest), PositionManager(ctx, gm, broker, ingest)]
     tasks = [asyncio.create_task(c.run()) for c in comps]
     try:
         await asyncio.sleep(3.0)
@@ -97,6 +110,7 @@ async def integration() -> None:
         pos = await db.open_positions()
         assert len(pos) == 1 and pos[0]["mint"] == GOOD, pos
         assert abs(pos[0]["size_sol"] - 0.1) < 1e-9 and pos[0]["meta"]["score"] >= 70 and pos[0]["lane"] == "fast"
+        assert GOOD in ingest.trade_subs, "position must subscribe its trade stream"
         dec = await db.fetchall("SELECT action, reason FROM decisions ORDER BY id")
         assert dec[0]["action"] == "buy" and any(d["reason"] == "already_in_position" for d in dec[1:]), [dict(d) for d in dec]
         orders = await db.fetchall("SELECT side, status FROM orders")
@@ -112,6 +126,7 @@ async def integration() -> None:
         trades = await db.fetchall("SELECT * FROM trades")
         assert len(trades) == 1 and trades[0]["exit_reason"] == "tp" and trades[0]["pnl_sol"] > 0.015, [dict(t) for t in trades]
         assert await db.open_positions_count() == 0
+        assert GOOD not in ingest.trade_subs, "closed position must unsubscribe"
         stats = await db.trade_stats()
         assert stats["wins"] == 1 and stats["streak"] == 1
         print(f"SELL tp ok · pnl {trades[0]['pnl_sol']:+.4f} SOL ({trades[0]['pnl_pct']:+.1f}%)")
@@ -125,12 +140,18 @@ async def integration() -> None:
         gm.mult = 1.0
         gm._cache.clear()
         await asyncio.sleep(2.5)
-        assert await db.open_positions_count() == 1
-        gm.mult = 0.85
-        gm._cache.clear()
-        await asyncio.sleep(2.5)
+        pos2 = await db.open_positions()
+        assert len(pos2) == 1
+        # a single trade tick at -15% must trigger the stop loss immediately, without waiting for GMGN
+        from tradoor_agent.bus import TOPIC_TRADE
+        from tradoor_agent.models import Side, TradeEvent
+        entry_sol = float(pos2[0]["entry_price_sol"])
+        bus.publish(TOPIC_TRADE, TradeEvent(mint=GOOD, ts=time.time(), side=Side.SELL, sol=0.5, tokens=0.5 / (entry_sol * 0.85), trader="X", price_sol=entry_sol * 0.85))
+        await asyncio.sleep(0.5)
         trades = await db.fetchall("SELECT exit_reason, pnl_sol FROM trades ORDER BY id")
         assert [t["exit_reason"] for t in trades] == ["tp", "sl"] and trades[1]["pnl_sol"] < 0, [dict(t) for t in trades]
+        pm = await db.fetchone("SELECT meta_json FROM positions WHERE id=?", (pos2[0]["id"],))
+        assert json.loads(pm["meta_json"])["exit_price_source"] == "tick"
         v = await rg.check(GOOD, Lane.FAST)
         assert not v.allowed and v.reason == "cooldown_after_loss", v
         eq = await db.equity_curve(settings.paper_start_sol)

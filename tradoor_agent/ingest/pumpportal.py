@@ -124,6 +124,8 @@ class PumpPortalIngest(Component):
         if not new:
             return
         self.trade_subs.update(new)
+        self.ctx.state.bump("ws.trade_subs")
+        self.log.info("subscribeTokenTrade %s", [m[:8] for m in new])
         await self._outgoing.put({"method": "subscribeTokenTrade", "keys": new})
 
     async def unsubscribe_trades(self, mints: list[str]) -> None:

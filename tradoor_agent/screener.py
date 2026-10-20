@@ -211,7 +211,7 @@ class Screener(Component):
             self.ctx.state.log("gates", "pass", f"PASS {sym} · {mc} · holders {snap.holder_count or '?'} · top10 {(snap.top10_rate or 0) * 100:.0f}% · smart {snap.smart_wallets or 0}", snap.mint, candidate_id=cand.id)
             self.ctx.bus.publish(TOPIC_CANDIDATE, cand)
             if self.ingest and self.ctx.settings.pumpportal_trade_subs and len(self.ingest.trade_subs) < self.ctx.settings.pumpportal_trade_subs_max:
-                await self.ingest.subscribe_trades([snap.mint])
+                await self.ingest.subscribe_trades([snap.mint])   # optional watchlist streaming (off by default; positions subscribe on their own)
             if not e.alerted and self._alert_budget_ok():
                 e.alerted = True
                 self.ctx.bus.alert(self._card(snap, e, age), "info")
@@ -243,7 +243,7 @@ class Screener(Component):
             self.ctx.state.bump(f"screen.evict.{why}")
             if e and why == "structural":
                 self.ctx.state.log("gates", "drop", f"EVICT {tag(e.evt.symbol, mint)} · struktural ×2 ({','.join(e.last_failed)})", mint)
-        if gone and self.ingest and self.ingest.trade_subs:
+        if gone and self.ingest and self.ingest.trade_subs and self.ctx.settings.pumpportal_trade_subs:
             asyncio.create_task(self.ingest.unsubscribe_trades([m for m, _ in gone]))
 
     def _deadest(self) -> str | None:

@@ -18,8 +18,14 @@ candidates (lolos hard gates)
             size dikali LLM_LANE_SIZE_MULT. Default OFF: grey = skip.
    -> risk gate: kill/pause · MAX_OPEN_POSITIONS · posisi ganda · REENTRY_COOLDOWN_SEC · DAILY_LOSS_CAP_SOL · COOLDOWN_AFTER_LOSS_SEC
    -> paper broker: fill = harga GMGN ± PAPER_SLIPPAGE_BPS, fee PAPER_FEE_BPS, konversi USD→SOL via harga WSOL GMGN
-   -> position manager (tiap POSITION_CHECK_SEC): dev_sold · holders_drop · sl · tp · trail · time  → SELL → trades + equity
+   -> entry filters: ENTRY_MAX_CHASE_1M/5M (jangan beli yang udah lari), ENTRY_MIN_HOLDERS, ENTRY_MAX_SELL_RATIO_1M (distribusi), ENTRY_MIN_SWAPS_1M
+   -> position manager: harga posisi dari TICK PumpPortal (subscribeTokenTrade per posisi, butuh PUMPPORTAL_API_KEY + wallet 0.02 SOL),
+      sl · tp · trail dievaluasi tiap tick; GMGN tiap POSITION_CHECK_SEC buat dev_sold · holders_drop · time, dan jadi fallback harga
+      kalau tick mati > TICK_STALE_SEC. → SELL → trades + equity
 ```
+
+Pelajaran dari 9 jam paper pertama (v0.5): SL -10% kena di -26..-56% karena harga GMGN di-cache 15 detik, dan semua entry
+masuk pas token lagi lari (hold 15-50 detik). Makanya v0.6: tick pricing, chase guard, SCORE_HIGH 80, bobot quality > momentum.
 
 Semua keputusan tersimpan: `decisions` (termasuk alasan skip), `orders`, `fills`, `positions` (meta: skor, komponen, peak), `trades`,
 `llm_reviews`. Itu bahan autopsy fase 5.

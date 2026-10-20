@@ -162,7 +162,7 @@ class WebDashboard(Component):
             "heartbeats_age_sec": {k: int(now - v) for k, v in st.heartbeats.items()},
             "ws": ws, "gmgn": gmgn, "watchlist": watch,
             "params": ctx.params.snapshot(),
-            "settings": {k: getattr(s, k) for k in dir(s) if k.startswith(("gate_", "cheap_", "screen_", "score_", "llm_", "position_", "max_open", "daily_loss", "exit_", "paper_", "cooldown", "reentry")) and not callable(getattr(s, k))},
+            "settings": {k: getattr(s, k) for k in dir(s) if k.startswith(("gate_", "cheap_", "screen_", "score_", "llm_", "position_", "max_open", "daily_loss", "exit_", "paper_", "cooldown", "reentry", "entry_", "tick_")) and not callable(getattr(s, k))},
             "open_positions": await ctx.db.open_positions_count(),
             "pnl_today_sol": await ctx.db.realized_pnl_today(),
             "candidates_24h": await ctx.db.candidate_counts_today(),

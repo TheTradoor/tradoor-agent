@@ -82,10 +82,17 @@ class Settings(BaseSettings):
     gate_require_renounced: bool = True
 
     # --- scoring (phase 2); weights are relative, components 0-1 ---
-    score_w_momentum: float = 30.0
+    score_w_momentum: float = 20.0          # momentum is where the "buy the top" losses came from; keep it modest
     score_w_growth: float = 25.0
-    score_w_quality: float = 30.0
+    score_w_quality: float = 40.0
     score_w_context: float = 15.0
+
+    # --- entry filters (trader; evaluated after routing, before the risk gate) ---
+    entry_max_chase_1m: float = 0.25        # price already up more than this in the last minute -> skip (buying the top)
+    entry_max_chase_5m: float = 1.00        # same over 5 minutes
+    entry_min_holders: int = 40
+    entry_max_sell_ratio_1m: float = 0.55   # sells/(buys+sells) in the last minute above this -> distribution, skip
+    entry_min_swaps_1m: int = 8             # too quiet to exit into
 
     # --- paper trading (dry_run) ---
     paper_slippage_bps: float = 150.0       # price impact + priority, each side
@@ -96,7 +103,9 @@ class Settings(BaseSettings):
     exit_trail_pct: float = 0.06            # trail distance from peak
     exit_max_hold_sec: int = 900            # time stop
     exit_holders_drop_pct: float = 0.20     # holders fell this much from peak -> exit
-    position_check_sec: int = 5             # manager loop interval (GMGN cache makes real refresh ~15s)
+    position_check_sec: int = 5             # manager loop interval for the slow checks (holders, dev); price exits run on ticks
+    tick_pricing: bool = True               # subscribe PumpPortal trade ticks for open positions (needs PUMPPORTAL_API_KEY)
+    tick_stale_sec: int = 20                # no tick for this long -> fall back to GMGN price for exits
     reentry_cooldown_sec: int = 1800        # no second entry on the same mint within this window
 
     # --- wallet (confirm / live only) ---
@@ -111,7 +120,7 @@ class Settings(BaseSettings):
     llm_lane_size_mult: float = 0.5         # grey-zone entries get smaller size
 
     # --- routing ---
-    score_high: float = 70.0                # >= high -> fast lane (70 while collecting paper data; tighten later)
+    score_high: float = 80.0                # >= high -> fast lane
     score_low: float = 50.0                 # < low -> drop ; between -> grey zone
     grey_min_token_age_sec: int = 180       # grey zone only for tokens at least this old
 
