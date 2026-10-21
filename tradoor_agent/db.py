@@ -400,6 +400,16 @@ class Database:
                 streak = -streak
         return {"trades": int(row["n"] or 0), "pnl_sol": float(row["pnl"] or 0), "wins": int(row["wins"] or 0), "losses": int(row["losses"] or 0), "streak": streak}
 
+    async def trade_stats_by_lane(self) -> dict[str, dict]:
+        rows = await self.fetchall(
+            "SELECT lane, COUNT(*) AS n, COALESCE(SUM(pnl_sol),0) AS pnl, "
+            "SUM(CASE WHEN pnl_sol > 0 THEN 1 ELSE 0 END) AS wins, "
+            "AVG(CASE WHEN pnl_sol > 0 THEN pnl_pct END) AS avg_win_pct, AVG(CASE WHEN pnl_sol <= 0 THEN pnl_pct END) AS avg_loss_pct, "
+            "AVG(holding_sec) AS avg_hold FROM trades GROUP BY lane"
+        )
+        return {r["lane"]: {"trades": int(r["n"]), "pnl_sol": float(r["pnl"] or 0), "wins": int(r["wins"] or 0),
+                            "avg_win_pct": r["avg_win_pct"], "avg_loss_pct": r["avg_loss_pct"], "avg_hold_sec": r["avg_hold"]} for r in rows}
+
     async def equity_curve(self, start_sol: float, limit: int = 2000) -> list[dict]:
         """Cumulative balance after each closed trade, oldest first, with markers."""
         rows = await self.fetchall(

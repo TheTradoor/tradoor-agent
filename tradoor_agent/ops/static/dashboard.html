@@ -60,6 +60,7 @@
   .log div{padding:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink2)}
   .log div.k-pass{color:var(--ink);font-weight:600}
   .log div.k-fail{color:var(--ink2)}.log div.k-drop,.log div.k-grow{color:var(--mut)}
+  .log div.k-watch{color:var(--ink2)}
   .log div.k-error{color:var(--bad)}.log div.k-warn{color:var(--warn)}.log div.k-trade{color:var(--ok);font-weight:600}
   .log .t{color:var(--mut);margin-right:6px}
   .log .a{letter-spacing:.08em;margin-right:6px}
@@ -139,6 +140,7 @@
   <div class="stat hide-m" id="h-pid">PID –</div>
   <div class="stat" id="h-ws">WS –</div>
   <div class="stat hide-m" id="h-gmgn">GMGN –</div>
+  <div class="stat hide-m" id="h-dex">DEXPAID –</div>
   <div class="sp"></div>
   <button id="btn-pause" onclick="act('pause')">pause</button>
   <button id="btn-resume" onclick="act('resume')" style="display:none">resume</button>
@@ -226,6 +228,9 @@ function renderHeader(s){
   $('#h-ws').style.color = w&&w.connected?'':'var(--bad)';
   $('#h-gmgn').textContent = g? (g.cooldown_sec?`GMGN COOLDOWN ${g.cooldown_sec}S`:`GMGN ${g.requests} REQ · ${g.errors} ERR`) : 'GMGN OFF';
   $('#h-gmgn').style.color = g&&(g.cooldown_sec||(g.errors&&g.requests&&g.errors/g.requests>0.3))?'var(--warn)':'';
+  const dx=s.dexpaid||{}; const dc=s.counters||{};
+  $('#h-dex').textContent = !dx.enabled?'DEXPAID OFF':dx.last_poll_age_sec==null?'DEXPAID …':`DEXPAID ${dc['dexpaid.events']||0} EV · ${dc['dexpaid.pass']||0} PASS${dx.last_poll_age_sec>30?' · STALE':''}`;
+  $('#h-dex').style.color = (!dx.enabled||dx.last_error||dx.last_poll_age_sec>30)?'var(--warn)':'';
   $('#btn-pause').style.display=s.paused?'none':'';$('#btn-resume').style.display=s.paused?'':'none';
 }
 function renderTiles(s){
@@ -239,7 +244,8 @@ function renderTiles(s){
   $('#t-launch-s').textContent=`watching ${c['screen.watchlist']||0} · cheap-drop ${c['screen.cheap_drop']||0} · fail ${c['screen.fail']||0}`;
   const n=(st.wins||0)+(st.losses||0);
   const wr=$('#t-wr'); wr.textContent=n?((st.wins/n)*100).toFixed(1)+'%':'–'; wr.className='v'+(n?'':' dim');
-  $('#t-wr-s').textContent=`${st.wins||0}W / ${st.losses||0}L`;
+  const ls=s.lane_stats||{}; const laneTxt=Object.keys(ls).sort().map(k=>`${k} ${ls[k].wins}/${ls[k].trades} ${(ls[k].pnl_sol>=0?'+':'')+ls[k].pnl_sol.toFixed(3)}`).join(' · ');
+  $('#t-wr-s').textContent=laneTxt||`${st.wins||0}W / ${st.losses||0}L`;
   if(equity){ const b=[equity.start_sol,...equity.points.map(p=>p.balance)]; spark('#sp-bal',b); spark('#sp-pnl',b.map(x=>x-equity.start_sol)); }
   if(timeline){ spark('#sp-launch',timeline.points.slice(-60).map(p=>p.launches)); }
 }
@@ -372,7 +378,7 @@ async function refreshTrades(){
   $('#trades').innerHTML = (pos.length||tr.length)? `<h2>open positions <span>${pos.length}</span></h2>${pos.length?`<table><thead><tr><th>token</th><th>lane</th><th>score</th><th>size</th><th>now</th><th>peak</th><th>held</th></tr></thead><tbody>${pos.map(p=>`<tr><td><b>$${esc(p.symbol||p.mint.slice(0,6))}</b></td><td>${p.lane}</td><td>${p.score!=null?Math.round(p.score):'–'}</td><td>${Number(p.size_sol).toFixed(3)}</td><td>${chg(p.last_change)}</td><td>${chg(p.peak_change)}</td><td>${age(Math.floor(status.now-p.opened_at))}</td></tr>`).join('')}</tbody></table>`:'<div class="empty">none</div>'}<h2 style="margin-top:12px">closed trades <span>${tr.length}</span></h2>${tr.length?`<table><thead><tr><th>token</th><th>lane</th><th>score</th><th>pnl</th><th>%</th><th>held</th><th>exit</th><th>when</th></tr></thead><tbody>${tr.map(t=>`<tr><td><b>$${esc(t.symbol||t.mint.slice(0,6))}</b></td><td>${t.lane}</td><td>${t.score!=null?Math.round(t.score):'–'}</td><td style="color:${t.pnl_sol>=0?'var(--ok)':'var(--bad)'}">${(t.pnl_sol>=0?'+':'')+Number(t.pnl_sol).toFixed(4)}</td><td>${t.pnl_pct==null?'':(t.pnl_pct>=0?'+':'')+Number(t.pnl_pct).toFixed(1)}</td><td>${age(Math.floor(t.holding_sec||0))}</td><td>${esc(t.exit_reason||'')}</td><td style="color:var(--mut)">${tm(t.closed_at)}</td></tr>`).join('')}</tbody></table>`:'<div class="empty">none yet</div>'}` : '<div class="empty">no paper trades yet · the trader enters when a candidate scores ≥ SCORE_HIGH and the risk gate allows it</div>';
 }
 function renderDiag(){
-  const s=status; if(!s) return; const w=s.ws||{}, g=s.gmgn||{};
+  const s=status; if(!s) return; const w=s.ws||{}, g=s.gmgn||{}, dx=s.dexpaid||{}, dc=s.counters||{};
   $('#diag').innerHTML=`<div class="kv">
    <div>ws connected</div><div>${w.connected}</div><div>ws last message</div><div>${w.last_message_age_sec==null?'never':w.last_message_age_sec+'s ago'}</div>
    <div>ws last error</div><div>${esc(w.last_error||'-')}</div><div>ws frame kinds</div><div>${esc(JSON.stringify(w.kinds_recent||{}))}</div>
@@ -380,6 +386,7 @@ function renderDiag(){
    <div>gmgn by path</div><div>${esc(JSON.stringify(g.by_path||{}))}</div>
    <div>gmgn errors</div><div>${g.errors??'-'} · 429 ×${g.rate_limited??0}${g.cooldown_sec?' · COOLDOWN '+g.cooldown_sec+'s':''}</div>
    <div>gmgn last error</div><div>${esc(g.last_error||'-')}</div>
+   <div>dexpaid</div><div>${dx.enabled?`polls ${dc['dexpaid.polls']||0} · events ${dc['dexpaid.events']||0} · pass ${dc['dexpaid.pass']||0} · gate_fail ${dc['dexpaid.gate_fail']||0} · last poll ${dx.last_poll_age_sec==null?'never':dx.last_poll_age_sec+'s ago'} · ${esc(dx.last_error||'ok')}`:'disabled'}</div>
    <div>gmgn security errors</div><div style="${g.security_errors?'color:var(--bad)':''}">${g.security_errors??'-'} ${g.last_security_error?'· '+esc(g.last_security_error):''}</div>
    <div>gmgn fields returned</div><div>${Object.entries(g.sample_keys||{}).map(([k,v])=>`<div><b>${esc(k)}</b>: ${esc(v.join(', '))}</div>`).join('')||'-'}</div>
    <div>heartbeats</div><div>${esc(JSON.stringify(s.heartbeats_age_sec))}</div><div>counters</div><div>${esc(JSON.stringify(s.counters))}</div>

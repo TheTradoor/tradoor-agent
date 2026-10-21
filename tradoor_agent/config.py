@@ -82,10 +82,10 @@ class Settings(BaseSettings):
     gate_require_renounced: bool = True
 
     # --- scoring (phase 2); weights are relative, components 0-1 ---
-    score_w_momentum: float = 20.0          # momentum is where the "buy the top" losses came from; keep it modest
-    score_w_growth: float = 25.0
+    score_w_momentum: float = 0.0           # outlook 48h: score 85+ (momentum-heavy) had 86% drawdowns > 30%. Off until proven.
+    score_w_growth: float = 20.0
     score_w_quality: float = 40.0
-    score_w_context: float = 15.0
+    score_w_context: float = 40.0           # context carries stage (bond 60%+ / migrated) and smart money
 
     # --- entry filters (trader; evaluated after routing, before the risk gate) ---
     entry_max_chase_1m: float = 0.25        # price already up more than this in the last minute -> skip (buying the top)
@@ -93,15 +93,31 @@ class Settings(BaseSettings):
     entry_min_holders: int = 40
     entry_max_sell_ratio_1m: float = 0.55   # sells/(buys+sells) in the last minute above this -> distribution, skip
     entry_min_swaps_1m: int = 8             # too quiet to exit into
+    entry_min_progress: float = 0.60        # bonding progress at entry (or migrated). <60% had median -61% @30m, 60%+ had +4%
+    entry_min_smart: int = 2                # smart wallets at entry. 3+ had median +113% max / +4% @30m vs -58% for 0
+
+    # --- dexpaid lane (DexScreener paid profile = event-driven entry) ---
+    dexpaid_enabled: bool = True
+    dexpaid_poll_sec: float = 2.0           # /token-profiles/latest/v1 is 60 req/min; 2s keeps headroom
+    dexpaid_max_token_age_sec: int = 7200   # ignore profiles paid for tokens older than this (not a launch play)
+    dexpaid_size_mult: float = 1.0          # position size vs POSITION_SIZE_SOL
+    dexpaid_max_chase_1m: float = 0.40      # by the time we see it, bots are in; allow more chase than the main lane
+    dexpaid_min_holders: int = 25
+    dexpaid_exit_tp_pct: float = 0.30       # dexpaid pumps are short: take the pop
+    dexpaid_exit_sl_pct: float = 0.12
+    dexpaid_exit_trail_arm_pct: float = 0.15
+    dexpaid_exit_trail_pct: float = 0.08
+    dexpaid_exit_max_hold_sec: int = 300
 
     # --- paper trading (dry_run) ---
     paper_slippage_bps: float = 150.0       # price impact + priority, each side
     paper_fee_bps: float = 100.0            # pump.fun 1%
-    exit_tp_pct: float = 0.15               # take profit vs entry
-    exit_sl_pct: float = 0.10               # stop loss vs entry
-    exit_trail_arm_pct: float = 0.10        # once up this much, trailing stop is armed
-    exit_trail_pct: float = 0.06            # trail distance from peak
-    exit_max_hold_sec: int = 900            # time stop
+    # strategy B (from the 48h outlook: 34% of passed tokens reached +50%, 15/10 scalp was -1.8%/trade, 50/15/30m was +4.2%)
+    exit_tp_pct: float = 0.50               # take profit vs entry
+    exit_sl_pct: float = 0.15               # stop loss vs entry
+    exit_trail_arm_pct: float = 0.30        # once up this much, trailing stop is armed
+    exit_trail_pct: float = 0.15            # trail distance from peak
+    exit_max_hold_sec: int = 1800           # time stop
     exit_holders_drop_pct: float = 0.20     # holders fell this much from peak -> exit
     position_check_sec: int = 5             # manager loop interval for the slow checks (holders, dev); price exits run on ticks
     tick_pricing: bool = True               # subscribe PumpPortal trade ticks for open positions (needs PUMPPORTAL_API_KEY)

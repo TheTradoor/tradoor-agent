@@ -148,7 +148,12 @@ class WebDashboard(Component):
                     "buys_1m": snap.buys_1m if snap else None, "sells_1m": snap.sells_1m if snap else None,
                 })
         tstats = await ctx.db.trade_stats()
+        lane_stats = await ctx.db.trade_stats_by_lane()
+        dex = ctx.dexpaid
         return _json({
+            "lane_stats": lane_stats,
+            "dexpaid": {"enabled": bool(s.dexpaid_enabled), "last_poll_age_sec": (int(now - dex.last_poll) if dex is not None and dex.last_poll else None),
+                        "last_error": getattr(dex, "last_error", "") if dex is not None else ""},
             "now": now,
             "version": _version(),
             "pid": os.getpid(),
@@ -162,7 +167,7 @@ class WebDashboard(Component):
             "heartbeats_age_sec": {k: int(now - v) for k, v in st.heartbeats.items()},
             "ws": ws, "gmgn": gmgn, "watchlist": watch,
             "params": ctx.params.snapshot(),
-            "settings": {k: getattr(s, k) for k in dir(s) if k.startswith(("gate_", "cheap_", "screen_", "score_", "llm_", "position_", "max_open", "daily_loss", "exit_", "paper_", "cooldown", "reentry", "entry_", "tick_")) and not callable(getattr(s, k))},
+            "settings": {k: getattr(s, k) for k in dir(s) if k.startswith(("gate_", "cheap_", "screen_", "score_", "llm_", "position_", "max_open", "daily_loss", "exit_", "paper_", "cooldown", "reentry", "entry_", "tick_", "dexpaid_")) and not callable(getattr(s, k))},
             "open_positions": await ctx.db.open_positions_count(),
             "pnl_today_sol": await ctx.db.realized_pnl_today(),
             "candidates_24h": await ctx.db.candidate_counts_today(),

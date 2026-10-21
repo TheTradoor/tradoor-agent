@@ -23,6 +23,7 @@ class Context:
     gmgn: object | None = None
     ingest: object | None = None
     screener: object | None = None
+    dexpaid: object | None = None
     web_url: str = ""
 
     def p(self, key: str):

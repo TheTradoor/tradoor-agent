@@ -124,8 +124,15 @@ class PositionManager(Component):
         price_sol = (snap.price_usd / sol_usd) if (snap.price_usd and sol_usd) else None
         await self._evaluate(pos, price_sol=price_sol, source="gmgn", structural=structural, price_exits=not tick_fresh, price_usd=snap.price_usd)
 
+    def _exit_params(self, pos: dict) -> dict:
+        p = self.ctx.p
+        if pos.get("lane") == "dexpaid":
+            return {"tp": p("dexpaid_exit_tp_pct"), "sl": p("dexpaid_exit_sl_pct"), "arm": p("dexpaid_exit_trail_arm_pct"), "trail": p("dexpaid_exit_trail_pct"), "hold": p("dexpaid_exit_max_hold_sec")}
+        return {"tp": p("exit_tp_pct"), "sl": p("exit_sl_pct"), "arm": p("exit_trail_arm_pct"), "trail": p("exit_trail_pct"), "hold": p("exit_max_hold_sec")}
+
     async def _evaluate(self, pos: dict, *, price_sol: float | None, source: str, structural: str | None = None, price_exits: bool = True, price_usd: float | None = None) -> None:
         p, st = self.ctx.p, self.ctx.state
+        x = self._exit_params(pos)
         if pos["id"] in self._closing:
             return
         meta = pos.setdefault("meta", {})
@@ -139,13 +146,13 @@ class PositionManager(Component):
             peak = max(float(meta.get("peak_price_sol") or entry), price_sol)
             meta.update({"peak_price_sol": peak, "last_price_sol": price_sol, "last_change": round(change, 4), "last_seen": now, "price_source": source})
             if reason is None and price_exits:
-                if change <= -p("exit_sl_pct"):
+                if change <= -x["sl"]:
                     reason = "sl"
-                elif change >= p("exit_tp_pct"):
+                elif change >= x["tp"]:
                     reason = "tp"
-                elif peak / entry - 1.0 >= p("exit_trail_arm_pct") and price_sol <= peak * (1 - p("exit_trail_pct")):
+                elif peak / entry - 1.0 >= x["arm"] and price_sol <= peak * (1 - x["trail"]):
                     reason = "trail"
-        if reason is None and held >= p("exit_max_hold_sec"):
+        if reason is None and held >= x["hold"]:
             reason = "time"
         if reason is None:
             if source == "gmgn":

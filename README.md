@@ -27,6 +27,20 @@ candidates (lolos hard gates)
 Pelajaran dari 9 jam paper pertama (v0.5): SL -10% kena di -26..-56% karena harga GMGN di-cache 15 detik, dan semua entry
 masuk pas token lagi lari (hold 15-50 detik). Makanya v0.6: tick pricing, chase guard, SCORE_HIGH 80, bobot quality > momentum.
 
+Pelajaran dari outlook 48 jam (`tools/outlook.py`, 82 kandidat lolos): scalp 15/10 = -1.8%/trade, 50/15/30m = +4.2%/trade;
+skor 85+ (momentum) 86% drawdown > 30%; bond 60%+ median +4% @30m vs bond 20-60% -61%; smart wallet 3+ median max +113%.
+Makanya v0.7 (strategi B): TP 50 / SL 15 / trail 30-15 / hold 30m, entry butuh bond >= 60% (atau migrated) + smart >= 2,
+bobot momentum 0, context (stage + smart money) 40.
+
+## Lane dexpaid (v0.7)
+
+`ingest/dexpaid.py` polling `api.dexscreener.com/token-profiles/latest/v1` tiap 2 detik; token Solana yang baru muncul di feed =
+baru bayar profil DexScreener. Event masuk ke trader: GMGN snapshot → hard gates struktural yang sama (bundler, dev, sniper, honeypot,
+serial launcher) tanpa minimum mcap → filter chase (lebih longgar, `DEXPAID_MAX_CHASE_1M`) + distribusi → risk gate → BUY dengan
+exit profile sendiri (`DEXPAID_EXIT_*`: tp 30 / sl 12 / hold 5m). Trade tercatat `lane=dexpaid`; tile win rate dan `/api/status`
+`lane_stats` memisahkan hasil per lane, jadi lane utama vs dexpaid bisa dibandingkan pakai data. `DEXPAID_ENABLED=false` mematikan.
+Catatan: bot dexpaid sniper lain masuk dalam 2-3 detik; polling 2 detik + GMGN snapshot = kita beberapa detik di belakang mereka.
+
 Semua keputusan tersimpan: `decisions` (termasuk alasan skip), `orders`, `fills`, `positions` (meta: skor, komponen, peak), `trades`,
 `llm_reviews`. Itu bahan autopsy fase 5.
 
@@ -77,7 +91,8 @@ tradoor_agent/
   scoring/ risk/ llm_review/ execution/ positions/ slow_loop/   (fase berikutnya)
 tests/test_phase1.py    replay test tanpa network: python -m tests.test_phase1
 tests/test_dashboard.py tes semua route dashboard: python -m tests.test_dashboard
-tests/test_phase2.py     replay buy → tp / sl paper: python -m tests.test_phase2
+tests/test_phase2.py     replay buy → tp / sl paper + tick SL + lane dexpaid: python -m tests.test_phase2
+tradoor_agent/tools/outlook.py   analisis: apa yang terjadi pada kandidat setelah lolos (python -m tradoor_agent.tools.outlook --hours 48)
 deploy/
   install.sh       setup venv + systemd di VPS, aman dijalankan ulang
   tradoor-agent.service

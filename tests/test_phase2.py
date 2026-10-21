@@ -54,7 +54,7 @@ class PricedGmgn(FakeGmgn):
 
 
 def unit_tests() -> None:
-    weights = {"momentum": 30, "growth": 25, "quality": 30, "context": 15}
+    weights = {"momentum": 0, "growth": 20, "quality": 40, "context": 40}
     b = {**{k: v for k, v in GMGN_INFO[GOOD].items() if not isinstance(v, dict)}, "symbol": "GOOD"}
     # emulate what the screener stores (snapshot metrics)
     b.update({"price_usd": 0.000045, "mcap_usd": 45000, "holder_count": 180, "liquidity_usd": 24000, "launchpad_progress": 0.62,
@@ -63,7 +63,7 @@ def unit_tests() -> None:
               "smart_wallets": 3, "renowned_wallets": 1, "creator_created_count": 2, "entrapment_rate": 0.0, "twitter": "goodcoin",
               "creation_ts": time.time() - 300})
     score, comps = score_candidate(b, None, time.time(), weights)
-    assert 75 <= score <= 100, (score, comps)
+    assert 70 <= score <= 100, (score, comps)
     # a bundled dump looks bad even with momentum
     bad = {**b, "top10_rate": 0.44, "bundler_rate": 0.19, "sniper_hold_rate": 0.29, "dev_hold_rate": 0.14, "smart_wallets": 0, "renowned_wallets": 0, "creator_created_count": 45}
     s2, _ = score_candidate(bad, None, time.time(), weights)
@@ -77,7 +77,7 @@ def unit_tests() -> None:
     # entry filters
     from tradoor_agent.trader import Trader
     class _P:  # minimal ctx.p stand-in
-        def __init__(self): self.v = dict(entry_max_chase_1m=0.25, entry_max_chase_5m=1.0, entry_min_holders=40, entry_max_sell_ratio_1m=0.55, entry_min_swaps_1m=8)
+        def __init__(self): self.v = dict(entry_max_chase_1m=0.25, entry_max_chase_5m=1.0, entry_min_holders=40, entry_max_sell_ratio_1m=0.55, entry_min_swaps_1m=8, entry_min_progress=0.6, entry_min_smart=2)
         def __call__(self, k): return self.v[k]
     tr = Trader.__new__(Trader); tr.ctx = type("C", (), {"p": _P()})()
     assert tr._entry_filter(b) is None
@@ -86,6 +86,9 @@ def unit_tests() -> None:
     assert tr._entry_filter({**b, "buys_1m": 3, "sells_1m": 2}).startswith("quiet")
     assert tr._entry_filter({**b, "buys_1m": 4, "sells_1m": 9}).startswith("distribution")
     assert tr._entry_filter({"symbol": "X"}) == "quiet 0 swaps/1m"
+    assert tr._entry_filter({**b, "launchpad_progress": 0.3}).startswith("stage")
+    assert tr._entry_filter({**b, "launchpad_progress": 0.3, "migrated": True}) is None
+    assert tr._entry_filter({**b, "smart_wallets": 1, "renowned_wallets": 0}).startswith("smart")
     print("unit tests OK")
 
 
@@ -102,7 +105,7 @@ async def integration() -> None:
     gm = PricedGmgn()
     broker = PaperBroker(ctx, gm)
     ingest = PumpPortalIngest(ctx, message_source=frames())
-    comps = [ingest, Screener(ctx, gm, ingest), Scorer(ctx), Trader(ctx, broker, ingest), PositionManager(ctx, gm, broker, ingest)]
+    comps = [ingest, Screener(ctx, gm, ingest), Scorer(ctx), Trader(ctx, broker, ingest, gm), PositionManager(ctx, gm, broker, ingest)]
     tasks = [asyncio.create_task(c.run()) for c in comps]
     try:
         await asyncio.sleep(3.0)
@@ -159,6 +162,36 @@ async def integration() -> None:
         kinds = [a["kind"] for a in state.activity]
         assert kinds.count("trade") >= 4
         print("SELL sl + cooldown ok ·", dict(state.counters))
+
+        # ---- dexpaid lane: event -> gates -> buy with its own exit profile (tp 30%)
+        await db.set_param("cooldown_after_loss_sec", 0, source="test")
+        await ctx.params.refresh(force=True)
+        from tradoor_agent.bus import TOPIC_DEXPAID
+        gm.mult = 1.0
+        gm._cache.clear()
+        bus.publish(TOPIC_DEXPAID, {"mint": GOOD, "ts": time.time(), "links": ["https://x.com/good"], "description": "paid", "icon": ""})
+        await asyncio.sleep(1.5)
+        pos3 = await db.open_positions()
+        assert len(pos3) == 1 and pos3[0]["lane"] == "dexpaid" and pos3[0]["meta"].get("dexpaid") is True, pos3
+        c3 = await db.fetchone("SELECT lane, reason, breakdown_json FROM candidates WHERE mint=? AND lane='dexpaid' ORDER BY id DESC LIMIT 1", (GOOD,))
+        assert c3 is not None and c3["reason"] == "dexpaid" and json.loads(c3["breakdown_json"])["dexpaid"] is True
+        # +32% tick -> dexpaid tp (30%), while the main lane's tp is 50%
+        e3 = float(pos3[0]["entry_price_sol"])
+        bus.publish(TOPIC_TRADE, TradeEvent(mint=GOOD, ts=time.time(), side=Side.BUY, sol=0.5, tokens=0.5 / (e3 * 1.32), trader="Y", price_sol=e3 * 1.32))
+        await asyncio.sleep(0.5)
+        trades = await db.fetchall("SELECT lane, exit_reason, pnl_pct FROM trades ORDER BY id")
+        assert [(t["lane"], t["exit_reason"]) for t in trades] == [("fast", "tp"), ("fast", "sl"), ("dexpaid", "tp")], [dict(t) for t in trades]
+        assert 20 < trades[2]["pnl_pct"] < 35
+        ls = await db.trade_stats_by_lane()
+        assert ls["dexpaid"]["trades"] == 1 and ls["fast"]["trades"] == 2
+        # a second dexpaid event for the same mint is blocked by the reentry cooldown (set back to default)
+        await db.set_param("reentry_cooldown_sec", 1800, source="test")
+        await ctx.params.refresh(force=True)
+        bus.publish(TOPIC_DEXPAID, {"mint": GOOD, "ts": time.time(), "links": [], "description": "", "icon": ""})
+        await asyncio.sleep(1.0)
+        last_dex = await db.fetchone("SELECT action, reason FROM decisions WHERE mint=? AND lane='dexpaid' ORDER BY id DESC LIMIT 1", (GOOD,))
+        assert last_dex["action"] == "skip" and last_dex["reason"] in ("reentry_cooldown", "already_in_position"), dict(last_dex)
+        print("dexpaid lane ok ·", ls)
     finally:
         state.request_stop()
         await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=15)

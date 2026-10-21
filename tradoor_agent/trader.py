@@ -8,9 +8,11 @@ from __future__ import annotations
 import asyncio
 import time
 
-from .bus import TOPIC_POSITION, TOPIC_SCORED
+from .bus import TOPIC_DEXPAID, TOPIC_POSITION, TOPIC_SCORED
 from .component import Component, Context
 from .execution.paper import PaperBroker
+from .gates.rules import failed, hard_gates
+from .ingest.gmgn import GmgnClient, GmgnError
 from .llm_review.reviewer import LLMReviewer
 from .models import Candidate, Decision, Lane, Verdict
 from .risk.gate import RiskGate
@@ -19,27 +21,90 @@ from .risk.gate import RiskGate
 class Trader(Component):
     name = "trader"
 
-    def __init__(self, ctx: Context, broker: PaperBroker, ingest=None) -> None:
+    def __init__(self, ctx: Context, broker: PaperBroker, ingest=None, gmgn: GmgnClient | None = None) -> None:
         super().__init__(ctx)
         self.broker = broker
         self.ingest = ingest
+        self.gmgn = gmgn
         self.risk = RiskGate(ctx)
         self.llm = LLMReviewer(ctx)
         self._lock = asyncio.Lock()      # one entry decision at a time: risk checks must see the previous fill
 
     async def run(self) -> None:
         q = self.ctx.bus.subscribe(TOPIC_SCORED, maxsize=1000)
-        while not self.ctx.state.stop.is_set():
-            self.beat()
-            try:
-                cand: Candidate = await asyncio.wait_for(q.get(), timeout=2.0)
-            except asyncio.TimeoutError:
-                continue
+        q_dex = self.ctx.bus.subscribe(TOPIC_DEXPAID, maxsize=200)
+        dex_task = asyncio.create_task(self._dexpaid_loop(q_dex), name="trader_dexpaid")
+        try:
+            while not self.ctx.state.stop.is_set():
+                self.beat()
+                try:
+                    cand: Candidate = await asyncio.wait_for(q.get(), timeout=2.0)
+                except asyncio.TimeoutError:
+                    continue
+                try:
+                    async with self._lock:
+                        await self._handle(cand)
+                except Exception:
+                    self.log.exception("trader failed on %s", cand.mint[:8])
+        finally:
+            dex_task.cancel()
+
+    # ------------------------------------------------------------ dexpaid lane
+
+    async def _dexpaid_loop(self, q: asyncio.Queue) -> None:
+        while True:
+            evt = await q.get()
             try:
                 async with self._lock:
-                    await self._handle(cand)
+                    await self._handle_dexpaid(evt)
             except Exception:
-                self.log.exception("trader failed on %s", cand.mint[:8])
+                self.log.exception("dexpaid handling failed for %s", str(evt.get("mint"))[:8])
+
+    async def _handle_dexpaid(self, evt: dict) -> None:
+        st, p = self.ctx.state, self.ctx.p
+        mint = str(evt["mint"])
+        if self.gmgn is None or not p("dexpaid_enabled"):
+            return
+        try:
+            snap = await self.gmgn.snapshot(mint)
+        except GmgnError as e:
+            st.log("dexpaid", "warn", f"DEXPAID {mint[:6]}… · no GMGN data · {str(e)[:60]}", mint)
+            return
+        sym = snap.symbol or mint[:6]
+        b = snap.metrics()
+        b.update({"symbol": sym, "dexpaid": True, "dexpaid_ts": evt.get("ts"), "dexpaid_links": evt.get("links")})
+        # not a launch play if the token is old
+        if snap.creation_ts and (evt.get("ts", 0) - snap.creation_ts) > p("dexpaid_max_token_age_sec"):
+            st.log("dexpaid", "info", f"SKIP ${sym} · token {int((evt['ts'] - snap.creation_ts) / 3600)}h old", mint)
+            return
+        # same structural gates as the main lane (bundle, dev, snipers, honeypot...), but no mcap/holders minimums
+        gates = hard_gates(
+            snap, min_holders=p("dexpaid_min_holders"), min_liquidity_usd=0.0, min_mcap_usd=0.0, max_mcap_usd=p("gate_max_mcap_usd"),
+            max_top10=p("gate_max_top10"), max_dev_hold=p("gate_max_dev_hold"), max_bundler=p("gate_max_bundler"), max_rat=p("gate_max_rat"),
+            max_snipers=p("gate_max_snipers"), max_sniper_hold=p("gate_max_sniper_hold"), max_entrapment=p("gate_max_entrapment"),
+            require_renounced=p("gate_require_renounced"), max_creator_created=p("gate_max_creator_created"),
+        )
+        bad = failed(gates)
+        from .models import Candidate as _C
+        cand = _C(mint=mint, ts=evt.get("ts", 0.0), score=0.0, breakdown=b, gates=gates, token_age_sec=(evt.get("ts", 0.0) - snap.creation_ts) if snap.creation_ts else 0.0,
+                  lane=Lane.DEXPAID if not bad else Lane.DROP, reason="dexpaid" if not bad else "dexpaid fail:" + ",".join(bad))
+        cand.id = await self.ctx.db.insert_candidate(cand)
+        if bad:
+            st.bump("dexpaid.gate_fail")
+            st.log("dexpaid", "fail", f"DEXPAID ${sym} · gates: {','.join(bad)}", mint, candidate_id=cand.id)
+            return
+        st.bump("dexpaid.pass")
+        # lane-specific entry filters: chase tolerance is higher (bots are already in), distribution still blocks
+        num = lambda k: (float(b[k]) if isinstance(b.get(k), (int, float)) else None)  # noqa: E731
+        pc1 = num("price_change_1m")
+        if pc1 is not None and pc1 > p("dexpaid_max_chase_1m"):
+            st.log("dexpaid", "info", f"SKIP ${sym} · chase_1m +{pc1 * 100:.0f}%", mint, candidate_id=cand.id)
+            return
+        buys, sells = num("buys_1m") or 0.0, num("sells_1m") or 0.0
+        if buys + sells >= 4 and sells / (buys + sells) > p("entry_max_sell_ratio_1m"):
+            st.log("dexpaid", "info", f"SKIP ${sym} · distribution {sells / (buys + sells) * 100:.0f}% sells", mint, candidate_id=cand.id)
+            return
+        await self._enter(cand, Lane.DEXPAID, score=0.0, size_mult=float(p("dexpaid_size_mult")))
 
     def _entry_filter(self, b: dict) -> str | None:
         """Return a reason to skip, or None. Missing data never blocks (the gates already vetted structure)."""
@@ -59,6 +124,13 @@ class Trader(Component):
             return f"quiet {int(swaps)} swaps/1m"
         if sells / swaps > p("entry_max_sell_ratio_1m"):
             return f"distribution {sells / swaps * 100:.0f}% sells"
+        migrated = bool(b.get("migrated")) or bool(b.get("migrated_pool"))
+        prog = num("launchpad_progress")
+        if not migrated and prog is not None and prog < p("entry_min_progress"):
+            return f"stage bond {prog * 100:.0f}%"
+        smart = (num("smart_wallets") or 0.0) + (num("renowned_wallets") or 0.0)
+        if smart < p("entry_min_smart"):
+            return f"smart {int(smart)}"
         return None
 
     async def _handle(self, cand: Candidate) -> None:
@@ -96,8 +168,17 @@ class Trader(Component):
             await self.ctx.db.insert_decision(Decision(mint=cand.mint, candidate_id=cand.id, action="skip", lane=lane, size_sol=0.0, reason=f"entry:{blocked}"), {"score": score})
             return
 
+        await self._enter(cand, lane, score=score)
+
+    async def _enter(self, cand: Candidate, lane: Lane, *, score: float, size_mult: float = 1.0) -> None:
+        st, p = self.ctx.state, self.ctx.p
+        b = cand.breakdown
+        sym = b.get("symbol") or cand.mint[:6]
+
         # ---- risk gate
         verdict = await self.risk.check(cand.mint, lane)
+        if verdict.allowed and size_mult != 1.0:
+            verdict.size_sol *= size_mult
         decision = Decision(mint=cand.mint, candidate_id=cand.id, action="buy" if verdict.allowed else "skip", lane=lane, size_sol=verdict.size_sol,
                             reason=verdict.reason if not verdict.allowed else f"score {score:.0f} {lane.value}")
         await self.ctx.db.insert_decision(decision, verdict.checks)
@@ -117,7 +198,8 @@ class Trader(Component):
         meta = {"symbol": sym, "score": score, "score_components": b.get("score"), "candidate_id": cand.id, "lane": lane.value,
                 "holders": b.get("holder_count"), "mcap_usd": b.get("mcap_usd"), "liquidity_usd": b.get("liquidity_usd"),
                 "bundler_rate": b.get("bundler_rate"), "top10_rate": b.get("top10_rate"), "launchpad_progress": b.get("launchpad_progress"),
-                "migrated": b.get("migrated"), "llm": b.get("llm"), "creator_status_at_entry": b.get("creator_status")}
+                "migrated": b.get("migrated"), "llm": b.get("llm"), "creator_status_at_entry": b.get("creator_status"),
+                "dexpaid": bool(b.get("dexpaid")), "smart_wallets": b.get("smart_wallets")}
         # subscribe ticks BEFORE the buy so the first post-entry trades are not missed
         if self.ingest and p("tick_pricing") and self.ctx.settings.pumpportal_api_key:
             try:

@@ -106,12 +106,12 @@ def score_candidate(b: dict, prev: Prev | None, now: float, weights: dict[str, f
         c_stage = 0.7                                    # tradable on AMM, but the easy bonding run is over
     elif prog is None:
         c_stage = None
-    elif prog < 0.10:
-        c_stage = 0.3
-    elif prog <= 0.85:
-        c_stage = 1.0
+    elif prog < 0.20:
+        c_stage = 0.1
+    elif prog < 0.60:
+        c_stage = 0.4                                    # outlook: median -61% @30m in this band
     else:
-        c_stage = 0.6                                    # about to migrate: price gap / volatility risk
+        c_stage = 1.0                                    # outlook: median +4% @30m, most of the +100% runners
     c_social = 1.0 if (g("twitter") or g("website") or g("telegram")) else 0.3
     c_holders = ramp(holders, 30, 150)
     if mcap is None:
@@ -122,7 +122,8 @@ def score_candidate(b: dict, prev: Prev | None, now: float, weights: dict[str, f
         c_mcap = 1.0
     else:
         c_mcap = clamp(1.0 - (mcap - 60_000) / 190_000, 0.3, 1.0)
-    context = wmean([(c_stage, 0.35), (c_social, 0.15), (c_holders, 0.25), (c_mcap, 0.25)])
+    c_smart = ramp((num("smart_wallets") or 0.0) + 1.5 * (num("renowned_wallets") or 0.0), 0.0, 4.0)
+    context = wmean([(c_stage, 0.30), (c_smart, 0.30), (c_social, 0.10), (c_holders, 0.15), (c_mcap, 0.15)])
 
     wm, wg, wq, wc = (max(weights.get(k, 0.0), 0.0) for k in ("momentum", "growth", "quality", "context"))
     total_w = (wm + wg + wq + wc) or 1.0
@@ -132,7 +133,7 @@ def score_candidate(b: dict, prev: Prev | None, now: float, weights: dict[str, f
         "m_ratio": m_ratio, "m_swaps": m_swaps, "m_pc1": m_pc1, "m_pc5": m_pc5,
         "g_hold": g_hold, "g_mcap": g_mcap,
         "q_top10": q_top10, "q_bund": q_bund, "q_snip": q_snip, "q_dev": q_dev, "q_fresh": q_fresh, "q_smart": q_smart, "q_serial": q_serial, "q_trap": q_trap,
-        "c_stage": c_stage, "c_social": c_social, "c_holders": c_holders, "c_mcap": c_mcap,
+        "c_stage": c_stage, "c_smart": c_smart, "c_social": c_social, "c_holders": c_holders, "c_mcap": c_mcap,
     }
     return round(score, 1), {k: (round(v, 3) if isinstance(v, float) else v) for k, v in comps.items()}
 

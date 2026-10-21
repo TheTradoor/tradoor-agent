@@ -18,6 +18,7 @@ class Lane(str, Enum):
     SCREENED = "screened"   # passed hard gates, waiting for scoring (phase 1 output)
     FAST = "fast"           # score >= SCORE_HIGH, deterministic only
     GREY = "grey"           # SCORE_LOW <= score < SCORE_HIGH and token old enough -> LLM review
+    DEXPAID = "dexpaid"     # token just paid for a DexScreener profile: event-driven entry with its own exit profile
     DROP = "drop"
 
 
