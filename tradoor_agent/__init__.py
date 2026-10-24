@@ -1,3 +1,3 @@
-"""TheTradoor Agent - Solana trading agent (hybrid: deterministic hot path + LLM grey-zone lane)."""
+"""TheTradoor Agent - Solana trading agent (trigger lanes -> filters -> security -> risk gate -> execution; LLM grey-zone lane optional)."""
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"

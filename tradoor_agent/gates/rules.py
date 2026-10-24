@@ -18,6 +18,29 @@ def _pct(v: float | None) -> str:
     return "n/a" if v is None else f"{v * 100:.1f}%"
 
 
+def is_bonding(snap: TokenSnapshot) -> bool:
+    """Still on a launchpad bonding curve (no real pool yet)?
+
+    GMGN: launchpad_status 0/1 = not open / live on the curve, 2 = migrated; migrated_pool set once an AMM pool exists.
+    A token with no launchpad fields at all (a Raydium/Meteora launch, an old coin) has a pool by definition.
+    """
+    if snap.migrated_pool or snap.launchpad_status == 2:
+        return False
+    if snap.launchpad_status in (0, 1):
+        return True
+    return snap.launchpad_progress is not None and snap.launchpad_progress < 1.0
+
+
+def bonding_from_metrics(b: dict) -> bool:
+    """Same test over a breakdown dict (snapshot.metrics(): None values are absent)."""
+    if b.get("migrated") or b.get("migrated_pool") or b.get("launchpad_status") == 2:
+        return False
+    if b.get("launchpad_status") in (0, 1):
+        return True
+    prog = b.get("launchpad_progress")
+    return isinstance(prog, (int, float)) and prog < 1.0
+
+
 def cheap_gates(evt: TokenEvent, *, max_dev_buy_sol: float, max_dev_supply_pct: float) -> list[GateResult]:
     sol, share = dev_initial_buy(evt)
     out = [
@@ -56,7 +79,7 @@ def hard_gates(
         return GateResult(name, v >= limit, detail=f"{fmt(v)} >= {fmt(limit)}", value=float(v))
 
     usd = lambda x: f"${x:,.0f}"  # noqa: E731
-    bonding = not snap.migrated_pool and snap.launchpad_status != 2
+    bonding = is_bonding(snap)
     out = [
         ge("holders", snap.holder_count, min_holders),
         # on the bonding curve liquidity is implied by mcap; GMGN often reports 0 there. Gate it only after migration.

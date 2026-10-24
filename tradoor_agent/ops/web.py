@@ -149,11 +149,22 @@ class WebDashboard(Component):
                 })
         tstats = await ctx.db.trade_stats()
         lane_stats = await ctx.db.trade_stats_by_lane()
-        dex = ctx.dexpaid
+        dex, trend, trk = ctx.dexpaid, ctx.trending, ctx.tracker
+        c = st.counters
+        lanes = {}
+        for lane, src in (("fast", "screen"), ("dexpaid", "dexpaid"), ("migration", "migration"), ("trending", "trending")):
+            lanes[lane] = {"mode": ctx.lane_mode(lane), "triggers": c.get(f"{lane}.triggers", c.get("score.fast", 0) if lane == "fast" else 0),
+                           "pass": c.get(f"{lane}.pass", c.get("score.fast", 0) if lane == "fast" else 0), "wait": c.get(f"{lane}.wait", 0),
+                           "gate_fail": c.get(f"{lane}.gate_fail", 0), "expired": c.get(f"{lane}.window_expired", 0),
+                           "observe": c.get(f"{lane}.observe", 0), "buy": c.get(f"{lane}.buy", 0)}
         return _json({
             "lane_stats": lane_stats,
-            "dexpaid": {"enabled": bool(s.dexpaid_enabled), "last_poll_age_sec": (int(now - dex.last_poll) if dex is not None and dex.last_poll else None),
+            "lanes": lanes,
+            "dexpaid": {"enabled": ctx.lane_mode("dexpaid") != "off", "last_poll_age_sec": (int(now - dex.last_poll) if dex is not None and dex.last_poll else None),
                         "last_error": getattr(dex, "last_error", "") if dex is not None else ""},
+            "trending": {"enabled": ctx.lane_mode("trending") != "off", "last_poll_age_sec": (int(now - trend.last_poll) if trend is not None and trend.last_poll else None),
+                         "last_error": getattr(trend, "last_error", "") if trend is not None else "", "top_n": getattr(trend, "last_n", 0)},
+            "tracker": {"active": len(getattr(trk, "tracked", {})) if trk is not None else 0, "recent": trk.summary()[:40] if trk is not None else []},
             "now": now,
             "version": _version(),
             "pid": os.getpid(),
@@ -167,7 +178,7 @@ class WebDashboard(Component):
             "heartbeats_age_sec": {k: int(now - v) for k, v in st.heartbeats.items()},
             "ws": ws, "gmgn": gmgn, "watchlist": watch,
             "params": ctx.params.snapshot(),
-            "settings": {k: getattr(s, k) for k in dir(s) if k.startswith(("gate_", "cheap_", "screen_", "score_", "llm_", "position_", "max_open", "daily_loss", "exit_", "paper_", "cooldown", "reentry", "entry_", "tick_", "dexpaid_")) and not callable(getattr(s, k))},
+            "settings": {k: getattr(s, k) for k in dir(s) if k.startswith(("gate_", "cheap_", "screen_", "score_", "llm_", "position_", "max_open", "daily_loss", "exit_", "paper_", "cooldown", "reentry", "entry_", "tick_", "dexpaid_", "mig_", "trend_", "trig_", "fast_", "track_")) and not callable(getattr(s, k))},
             "open_positions": await ctx.db.open_positions_count(),
             "pnl_today_sol": await ctx.db.realized_pnl_today(),
             "candidates_24h": await ctx.db.candidate_counts_today(),
@@ -179,9 +190,11 @@ class WebDashboard(Component):
         lane = request.query.get("lane", "all")
         sql = "SELECT id, ts, mint, lane, reason, token_age_sec, score, breakdown_json FROM candidates WHERE ts > ?"
         args: list = [time.time() - minutes * 60]
-        if lane in ("screened", "drop"):
+        if lane in ("screened", "drop", "dexpaid", "migration", "trending", "fast", "grey", "track"):
             sql += " AND lane = ?"
             args.append(lane)
+        else:
+            sql += " AND lane != 'track'"
         sql += " ORDER BY ts DESC LIMIT ?"
         args.append(limit)
         rows = await self.ctx.db.fetchall(sql, args)
@@ -213,7 +226,7 @@ class WebDashboard(Component):
         minutes = _int(request.query.get("minutes"), 120, 10, 1440)
         since = time.time() - minutes * 60
         launches = await self.ctx.db.fetchall("SELECT CAST(first_seen_at/60 AS INTEGER)*60 AS m, COUNT(*) AS n FROM tokens WHERE first_seen_at > ? GROUP BY m", (since,))
-        cands = await self.ctx.db.fetchall("SELECT CAST(ts/60 AS INTEGER)*60 AS m, lane, COUNT(DISTINCT mint) AS n FROM candidates WHERE ts > ? GROUP BY m, lane", (since,))
+        cands = await self.ctx.db.fetchall("SELECT CAST(ts/60 AS INTEGER)*60 AS m, lane, COUNT(DISTINCT mint) AS n FROM candidates WHERE ts > ? AND lane != 'track' GROUP BY m, lane", (since,))
         series: dict[int, dict] = {}
         for r in launches:
             series.setdefault(int(r["m"]), {"launches": 0, "screened": 0, "drop": 0})["launches"] = r["n"]
@@ -259,7 +272,7 @@ class WebDashboard(Component):
         if self._funnel_cache and now - self._funnel_cache[0] < 45 and self._funnel_cache[1].get("minutes") == minutes:
             return _json(self._funnel_cache[1])
         rows = await self.ctx.db.fetchall(
-            "SELECT id, ts, mint, lane, reason, token_age_sec, gates_json, breakdown_json FROM candidates WHERE ts > ? ORDER BY ts DESC LIMIT 25000",
+            "SELECT id, ts, mint, lane, reason, token_age_sec, gates_json, breakdown_json FROM candidates WHERE ts > ? AND lane != 'track' ORDER BY ts DESC LIMIT 25000",
             (now - minutes * 60,),
         )
         gate_eval: dict[str, int] = {}

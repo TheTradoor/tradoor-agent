@@ -132,6 +132,28 @@ async def _dump_gmgn(settings: Settings, mint: str) -> int:
     return 0
 
 
+async def _dump_rank(settings: Settings) -> int:
+    """Print the GMGN trending rank as the trending lane sees it (shape check for /v1/market/rank)."""
+    import json
+    from .ingest.gmgn import rank_address
+    from .supervisor import build_gmgn
+
+    g = build_gmgn(settings)
+    try:
+        items = await g.market_rank(interval=settings.trend_interval, order_by=settings.trend_order_by, limit=settings.trend_limit)
+        print(f"=== /v1/market/rank chain=sol interval={settings.trend_interval} order_by={settings.trend_order_by} limit={settings.trend_limit} -> {len(items)} items ===")
+        for i, it in enumerate(items[:15], start=1):
+            print(f"{i:3d} {rank_address(it)[:44]:44} {str(it.get('symbol') or ''):10} keys={sorted(it.keys())[:12]}")
+        if items:
+            print("=== first item raw ===")
+            print(json.dumps(items[0], indent=1, default=str)[:2500])
+        else:
+            print("kosong: cek key / plan, atau bentuk payload berubah (rank_items di ingest/gmgn.py)")
+    finally:
+        await g.close()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="tradoor_agent", description="TheTradoor Agent")
     parser.add_argument("--check", action="store_true", help="validate config and exit")
@@ -139,6 +161,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--probe-ws", type=int, metavar="N", help="print N raw PumpPortal frames and exit")
     parser.add_argument("--check-gmgn", action="store_true", help="test the GMGN API key and field mapping")
     parser.add_argument("--dump-gmgn", metavar="MINT", help="print raw GMGN info+security for a mint")
+    parser.add_argument("--dump-rank", action="store_true", help="print the GMGN trending rank (what the trending lane polls)")
     parser.add_argument("--version", action="version", version=f"tradoor_agent {__version__}")
     args = parser.parse_args(argv)
 
@@ -154,6 +177,8 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(_check_gmgn(settings))
     if args.dump_gmgn:
         return asyncio.run(_dump_gmgn(settings, args.dump_gmgn))
+    if args.dump_rank:
+        return asyncio.run(_dump_rank(settings))
 
     problems = settings.problems()
     if problems:

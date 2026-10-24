@@ -124,7 +124,7 @@ class GmgnClient:
 
     # ------------------------------------------------------------ core request
 
-    async def request(self, method: str, path: str, query: dict | None = None, body: Any = None, *, cache_key: tuple | None = None, cache_sec: float | None = None) -> Any:
+    async def request(self, method: str, path: str, query: dict | list | None = None, body: Any = None, *, cache_key: tuple | None = None, cache_sec: float | None = None) -> Any:
         ttl = self.cache_sec if cache_sec is None else cache_sec
         if cache_key is not None and ttl > 0:
             hit = self._cache.get(cache_key)
@@ -143,9 +143,12 @@ class GmgnClient:
         self.stats.requests += 1
         self.stats.by_path[path] = self.stats.by_path.get(path, 0) + 1
 
-        q = dict(query or {})
-        q["timestamp"] = int(time.time())
-        q["client_id"] = str(uuid.uuid4())
+        q: Any = list(query) if isinstance(query, list) else dict(query or {})
+        if isinstance(q, list):
+            q += [("timestamp", int(time.time())), ("client_id", str(uuid.uuid4()))]
+        else:
+            q["timestamp"] = int(time.time())
+            q["client_id"] = str(uuid.uuid4())
         headers = {"X-APIKEY": self.api_key, "Content-Type": "application/json", "User-Agent": "tradoor-agent/0.1"}
 
         try:
@@ -206,6 +209,13 @@ class GmgnClient:
             q["tag"] = tag
         return await self.request("GET", "/v1/market/token_top_holders", q, cache_key=("holders", mint, limit, tag), cache_sec=max(self.cache_sec, 30))
 
+    async def market_rank(self, interval: str = "1m", order_by: str = "swaps", limit: int = 40, filters: tuple[str, ...] = ("not_honeypot", "renounced")) -> list[dict]:
+        """GMGN trending rank (weight 1). Returns a list of token dicts; the address key varies, see rank_address()."""
+        q: list[tuple[str, Any]] = [("chain", self.chain), ("interval", interval), ("order_by", order_by), ("direction", "desc"), ("limit", limit)]
+        q += [("filters", f) for f in filters]          # documented as repeatable
+        data = await self.request("GET", "/v1/market/rank", q, cache_key=None)
+        return rank_items(data)
+
     WSOL = "So11111111111111111111111111111111111111112"
 
     async def sol_price_usd(self) -> float | None:
@@ -260,6 +270,25 @@ class GmgnClient:
 
 
 # ---------------------------------------------------------------- normalization
+
+def rank_items(data: Any) -> list[dict]:
+    """/v1/market/rank payload -> list of token dicts, whatever wrapper GMGN uses ({"rank": [...]}, {"list": [...]}, [...])."""
+    if isinstance(data, list):
+        return [x for x in data if isinstance(x, dict)]
+    if isinstance(data, dict):
+        for k in ("rank", "list", "tokens", "data", "items"):
+            v = data.get(k)
+            if isinstance(v, list):
+                return [x for x in v if isinstance(x, dict)]
+        for v in data.values():
+            if isinstance(v, list) and v and isinstance(v[0], dict):
+                return [x for x in v if isinstance(x, dict)]
+    return []
+
+
+def rank_address(item: dict) -> str:
+    return str(_first(item.get("address"), item.get("token_address"), item.get("mint"), item.get("contract_address"), item.get("id"), "") or "")
+
 
 def _g(d: Any, *path: str, default: Any = None) -> Any:
     """Nested get that tolerates missing keys and non-dict intermediates."""

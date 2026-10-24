@@ -18,8 +18,20 @@ class Lane(str, Enum):
     SCREENED = "screened"   # passed hard gates, waiting for scoring (phase 1 output)
     FAST = "fast"           # score >= SCORE_HIGH, deterministic only
     GREY = "grey"           # SCORE_LOW <= score < SCORE_HIGH and token old enough -> LLM review
-    DEXPAID = "dexpaid"     # token just paid for a DexScreener profile: event-driven entry with its own exit profile
+    # trigger lanes (v0.8): one per external trigger source, each with its own filters / exits / mode
+    DEXPAID = "dexpaid"     # token just paid for a DexScreener profile or boost
+    MIGRATION = "migration" # token just graduated from pump.fun to the AMM
+    TRENDING = "trending"   # token just entered GMGN's trending rank
+    TRACK = "track"         # outcome tracker rows (price path after a trigger), not a decision lane
     DROP = "drop"
+
+    @property
+    def is_trigger(self) -> bool:
+        return self in (Lane.DEXPAID, Lane.MIGRATION, Lane.TRENDING)
+
+    @property
+    def tradable(self) -> bool:
+        return self in (Lane.FAST, Lane.GREY, Lane.DEXPAID, Lane.MIGRATION, Lane.TRENDING)
 
 
 class Verdict(str, Enum):

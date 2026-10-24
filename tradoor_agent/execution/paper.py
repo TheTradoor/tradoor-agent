@@ -36,9 +36,12 @@ class PaperBroker:
             return None
         slip = float(p("paper_slippage_bps")) / 10_000
         fee = float(p("paper_fee_bps")) / 10_000
+        fixed = float(p("paper_fixed_fee_sol"))
         price_sol = price_usd / sol_usd
         fill_price_sol = price_sol * (1 + slip)
-        fee_sol = size_sol * fee
+        fee_sol = size_sol * fee + fixed
+        if fee_sol >= size_sol:
+            return None
         tokens = (size_sol - fee_sol) / fill_price_sol
         now = time.time()
 
@@ -71,10 +74,11 @@ class PaperBroker:
             price_usd = price_sol * sol_usd
         slip = float(p("paper_slippage_bps")) / 10_000
         fee = float(p("paper_fee_bps")) / 10_000
+        fixed = float(p("paper_fixed_fee_sol"))
         fill_price_sol = price_sol * (1 - slip)
         gross = pos["tokens"] * fill_price_sol
-        fee_sol = gross * fee
-        proceeds = gross - fee_sol
+        fee_sol = gross * fee + fixed
+        proceeds = max(gross - fee_sol, 0.0)
         pnl = proceeds - pos["size_sol"]
         pnl_pct = pnl / pos["size_sol"] * 100 if pos["size_sol"] else 0.0
         now = time.time()

@@ -20,6 +20,9 @@ class Housekeeper(Component):
                 pruned = await db.prune_events(retention)
                 if pruned:
                     self.log.info("pruned %d old events", pruned)
+                pruned = await db.prune_candidates(self.ctx.settings.candidates_retention_days)
+                if pruned:
+                    self.log.info("pruned %d old candidate rows", pruned)
             except Exception:
                 self.log.exception("housekeeping failed")
             if await self.sleep(self.INTERVAL_SEC):

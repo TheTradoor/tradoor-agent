@@ -247,6 +247,16 @@ class Database:
         await self.conn.commit()
         return cur.rowcount or 0
 
+    async def prune_candidates(self, older_than_days: int) -> int:
+        """Drop old screener / tracker rows (the outlook only needs recent paths; trades keep their own copy of the entry breakdown)."""
+        import time
+        if older_than_days <= 0:
+            return 0
+        cutoff = time.time() - older_than_days * 86_400
+        cur = await self.conn.execute("DELETE FROM candidates WHERE ts < ?", (cutoff,))
+        await self.conn.commit()
+        return cur.rowcount or 0
+
     # ------------------------------------------------------------ tokens / candidates
 
     async def upsert_token(self, evt) -> None:

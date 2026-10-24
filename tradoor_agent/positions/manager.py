@@ -125,10 +125,11 @@ class PositionManager(Component):
         await self._evaluate(pos, price_sol=price_sol, source="gmgn", structural=structural, price_exits=not tick_fresh, price_usd=snap.price_usd)
 
     def _exit_params(self, pos: dict) -> dict:
-        p = self.ctx.p
-        if pos.get("lane") == "dexpaid":
-            return {"tp": p("dexpaid_exit_tp_pct"), "sl": p("dexpaid_exit_sl_pct"), "arm": p("dexpaid_exit_trail_arm_pct"), "trail": p("dexpaid_exit_trail_pct"), "hold": p("dexpaid_exit_max_hold_sec")}
-        return {"tp": p("exit_tp_pct"), "sl": p("exit_sl_pct"), "arm": p("exit_trail_arm_pct"), "trail": p("exit_trail_pct"), "hold": p("exit_max_hold_sec")}
+        """Exit profile for a position: <lane>_exit_* when set, else the global exit_* (both live-overridable)."""
+        lane = str(pos.get("lane") or "fast")
+        lp = lambda k: self.ctx.lane_p(lane, k, k)  # noqa: E731
+        return {"tp": float(lp("exit_tp_pct")), "sl": float(lp("exit_sl_pct")), "arm": float(lp("exit_trail_arm_pct")), "trail": float(lp("exit_trail_pct")),
+                "hold": int(lp("exit_max_hold_sec")), "flat_after": int(lp("exit_flat_after_sec")), "flat_min": float(self.ctx.p("exit_flat_min_pct"))}
 
     async def _evaluate(self, pos: dict, *, price_sol: float | None, source: str, structural: str | None = None, price_exits: bool = True, price_usd: float | None = None) -> None:
         p, st = self.ctx.p, self.ctx.state
@@ -154,6 +155,11 @@ class PositionManager(Component):
                     reason = "trail"
         if reason is None and held >= x["hold"]:
             reason = "time"
+        # flat stop: the token never got going -> free the slot for the next trigger (peak is kept in meta across ticks)
+        if reason is None and x["flat_min"] > 0 and x["flat_after"] > 0 and held >= x["flat_after"]:
+            peak_change = float(meta.get("peak_price_sol") or entry) / entry - 1.0
+            if peak_change < x["flat_min"] and (price_sol or source == "gmgn"):
+                reason = "flat"
         if reason is None:
             if source == "gmgn":
                 await self.ctx.db.update_position_meta(pos["id"], meta)

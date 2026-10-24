@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
+from typing import ClassVar
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -96,29 +97,123 @@ class Settings(BaseSettings):
     entry_min_progress: float = 0.60        # bonding progress at entry (or migrated). <60% had median -61% @30m, 60%+ had +4%
     entry_min_smart: int = 2                # smart wallets at entry. 3+ had median +113% max / +4% @30m vs -58% for 0
 
-    # --- dexpaid lane (DexScreener paid profile = event-driven entry) ---
-    dexpaid_enabled: bool = True
-    dexpaid_poll_sec: float = 2.0           # /token-profiles/latest/v1 is 60 req/min; 2s keeps headroom
-    dexpaid_max_token_age_sec: int = 7200   # ignore profiles paid for tokens older than this (not a launch play)
-    dexpaid_size_mult: float = 1.0          # position size vs POSITION_SIZE_SOL
-    dexpaid_max_chase_1m: float = 0.40      # by the time we see it, bots are in; allow more chase than the main lane
-    dexpaid_min_holders: int = 25
-    dexpaid_exit_tp_pct: float = 0.30       # dexpaid pumps are short: take the pop
-    dexpaid_exit_sl_pct: float = 0.12
-    dexpaid_exit_trail_arm_pct: float = 0.15
-    dexpaid_exit_trail_pct: float = 0.08
-    dexpaid_exit_max_hold_sec: int = 300
+    # --- lanes (v0.8: trigger -> filter -> security -> entry, one lane per trigger source) ---
+    # mode per lane: trade | observe | off.  observe = run every check and record the outcome (tracker) but never buy,
+    # so a trigger can be measured on hundreds of tokens without the 3-position cap censoring the data.
+    fast_mode: str = "trade"                # scored launches (screener -> scorer -> FAST route)
+    dexpaid_mode: str = "trade"             # DexScreener paid profile / boost
+    mig_mode: str = "trade"                 # pump.fun migration (graduated to the AMM)
+    trend_mode: str = "trade"               # GMGN trending rank (new entrant into the top N by swaps)
+
+    # shared filter defaults for the trigger lanes (dexpaid / mig / trend); each lane can override any of them below.
+    # these tokens already have a pool, so liquidity and holders are real requirements here (the launch lane waits for them to grow)
+    trig_require_pool: bool = True          # bonding-curve tokens wait (re-check) until they migrate; v0.7 lost 0.25 SOL buying dexpaid on the curve
+    trig_min_holders: int = 60
+    trig_min_liquidity_usd: float = 10000.0 # thin pools = slippage; the paper fill model assumes a liquid pool
+    trig_min_mcap_usd: float = 30000.0
+    trig_max_mcap_usd: float = 1000000.0
+    trig_max_token_age_sec: int = 86400     # older than this is not a launch play (trending majors, revived coins)
+    trig_max_chase_1m: float = 0.30         # already up this much in 1m -> wait, re-check (chasing the top)
+    trig_min_change_1m: float = -0.10       # bleeding this much in 1m -> wait, re-check (knife)
+    trig_max_chase_5m: float = 1.00
+    trig_min_swaps_1m: int = 10             # too quiet to exit into
+    trig_max_sell_ratio_1m: float = 0.60    # sells/(buys+sells) in 1m above this = distribution
+    trig_min_smart: int = 0
+    trig_recheck_sec: int = 15              # soft-filter fail -> look again after this
+    trig_window_sec: int = 120              # give up on the trigger after this long without a clean entry
+    trig_size_mult: float = 1.0
+
+    # per-lane overrides (empty = use the trig_* default)
+    dexpaid_enabled: bool = True            # kept for old .env files; same as DEXPAID_MODE=off when false
+    dexpaid_poll_sec: float = 2.0           # /token-profiles/latest/v1 and /token-boosts/latest/v1 are 60 req/min each
+    dexpaid_boosts: bool = True             # also poll token boosts (the "dex boosted" orange icon)
+    dexpaid_max_token_age_sec: int | None = None
+    dexpaid_require_pool: bool | None = None
+    dexpaid_min_holders: int | None = None
+    dexpaid_min_liquidity_usd: float | None = None
+    dexpaid_min_mcap_usd: float | None = None
+    dexpaid_max_mcap_usd: float | None = None
+    dexpaid_max_chase_1m: float | None = 0.40   # by the time we see the profile bots are in; tolerate a bit more
+    dexpaid_min_change_1m: float | None = None
+    dexpaid_min_swaps_1m: int | None = None
+    dexpaid_min_smart: int | None = None
+    dexpaid_recheck_sec: int | None = None
+    dexpaid_window_sec: int | None = None
+    dexpaid_size_mult: float | None = None
+
+    mig_first_check_sec: int = 30           # right after migration the AMM pool is seconds old and GMGN has not re-indexed; wait
+    mig_max_token_age_sec: int | None = None
+    mig_require_pool: bool | None = None
+    mig_min_holders: int | None = 100       # a graduated token with < 100 holders is a bundle that bonded itself
+    mig_min_liquidity_usd: float | None = 15000.0
+    mig_min_mcap_usd: float | None = 50000.0
+    mig_max_mcap_usd: float | None = None
+    mig_max_chase_1m: float | None = None
+    mig_min_change_1m: float | None = -0.05 # the post-migration dump must be over: no bleeding in the last minute
+    mig_min_swaps_1m: int | None = None
+    mig_min_smart: int | None = None
+    mig_recheck_sec: int | None = 20
+    mig_window_sec: int | None = 300        # the stabilise-then-run usually happens in the first 5 minutes or not at all
+    mig_size_mult: float | None = None
+
+    trend_poll_sec: float = 10.0            # /v1/market/rank is weight 1
+    trend_interval: str = "1m"              # 1m | 5m | 1h : rank window
+    trend_order_by: str = "swaps"           # swaps | volume | marketcap | holder_count | change1h
+    trend_limit: int = 40                   # top N; a token entering the top N for the first time is the trigger
+    trend_max_token_age_sec: int | None = None
+    trend_require_pool: bool | None = None
+    trend_min_holders: int | None = None
+    trend_min_liquidity_usd: float | None = None
+    trend_min_mcap_usd: float | None = None
+    trend_max_mcap_usd: float | None = None
+    trend_max_chase_1m: float | None = None
+    trend_min_change_1m: float | None = None
+    trend_min_swaps_1m: int | None = None
+    trend_min_smart: int | None = None
+    trend_recheck_sec: int | None = None
+    trend_window_sec: int | None = 90
+    trend_size_mult: float | None = None
+
+    # --- outcome tracker: follows every passed trigger (traded or observed) so the outlook can grade each lane ---
+    track_enabled: bool = True
+    track_interval_sec: int = 30            # token/info is weight 1; 30s matches the screener's resolution
+    track_duration_sec: int = 1800
+    track_max: int = 80                     # concurrently tracked mints (80 x 1 weight / 30s = 2.7 weight/s)
 
     # --- paper trading (dry_run) ---
-    paper_slippage_bps: float = 150.0       # price impact + priority, each side
-    paper_fee_bps: float = 100.0            # pump.fun 1%
-    # strategy B (from the 48h outlook: 34% of passed tokens reached +50%, 15/10 scalp was -1.8%/trade, 50/15/30m was +4.2%)
-    exit_tp_pct: float = 0.50               # take profit vs entry
-    exit_sl_pct: float = 0.15               # stop loss vs entry
-    exit_trail_arm_pct: float = 0.30        # once up this much, trailing stop is armed
-    exit_trail_pct: float = 0.15            # trail distance from peak
-    exit_max_hold_sec: int = 1800           # time stop
+    paper_slippage_bps: float = 150.0       # price impact, each side
+    paper_fee_bps: float = 100.0            # pool/launchpad fee + PumpPortal 0.5%, each side
+    paper_fixed_fee_sol: float = 0.0005     # priority fee + tx fee, each side. On a 0.1 SOL position this is 0.5% per side: size matters
+    # exits (v0.8): lock small profits, cut losers, never give back a run. same for every lane unless a lane overrides.
+    #   trail arms at +10% and trails 5% from the peak (a +50% run exits around +45%); hard stop -12%; time stop 15m;
+    #   flat stop: after 5 minutes without reaching +3% the money moves to the next trigger.
+    exit_tp_pct: float = 1.00               # take profit vs entry (the trail does the real work; this catches a vertical candle)
+    exit_sl_pct: float = 0.12               # stop loss vs entry
+    exit_trail_arm_pct: float = 0.10        # once up this much, trailing stop is armed
+    exit_trail_pct: float = 0.05            # trail distance from peak
+    exit_max_hold_sec: int = 900            # time stop
+    exit_flat_after_sec: int = 300          # after this long...
+    exit_flat_min_pct: float = 0.03         # ...if the peak never reached this, exit (capital is better used elsewhere); 0 = off
     exit_holders_drop_pct: float = 0.20     # holders fell this much from peak -> exit
+    # per-lane exit overrides (empty = global)
+    dexpaid_exit_tp_pct: float | None = None
+    dexpaid_exit_sl_pct: float | None = None
+    dexpaid_exit_trail_arm_pct: float | None = None
+    dexpaid_exit_trail_pct: float | None = None
+    dexpaid_exit_max_hold_sec: int | None = None
+    dexpaid_exit_flat_after_sec: int | None = None
+    mig_exit_tp_pct: float | None = None
+    mig_exit_sl_pct: float | None = None
+    mig_exit_trail_arm_pct: float | None = None
+    mig_exit_trail_pct: float | None = None
+    mig_exit_max_hold_sec: int | None = None
+    mig_exit_flat_after_sec: int | None = None
+    trend_exit_tp_pct: float | None = None
+    trend_exit_sl_pct: float | None = None
+    trend_exit_trail_arm_pct: float | None = None
+    trend_exit_trail_pct: float | None = None
+    trend_exit_max_hold_sec: int | None = None
+    trend_exit_flat_after_sec: int | None = None
     position_check_sec: int = 5             # manager loop interval for the slow checks (holders, dev); price exits run on ticks
     tick_pricing: bool = True               # subscribe PumpPortal trade ticks for open positions (needs PUMPPORTAL_API_KEY)
     tick_stale_sec: int = 20                # no tick for this long -> fall back to GMGN price for exits
@@ -160,8 +255,17 @@ class Settings(BaseSettings):
     heartbeat_stale_sec: int = 60
     watchdog_interval_sec: int = 10
     events_retention_days: int = 7
+    candidates_retention_days: int = 21     # screener + tracker rows (the outlook reads these); 0 = keep forever
 
     # ------------------------------------------------------------------ helpers
+
+    # lane name (models.Lane value) -> settings prefix of its overrides
+    LANE_PREFIX: ClassVar[dict[str, str]] = {"fast": "fast", "grey": "fast", "dexpaid": "dexpaid", "migration": "mig", "trending": "trend"}
+    LANE_MODES: ClassVar[tuple[str, ...]] = ("trade", "observe", "off")
+
+    @classmethod
+    def lane_prefix(cls, lane: str) -> str:
+        return cls.LANE_PREFIX.get(lane, lane)
 
     @property
     def owner_ids(self) -> set[int]:
@@ -210,6 +314,13 @@ class Settings(BaseSettings):
             p.append("GMGN_BUDGET_FRACTION harus di antara 0 dan 1")
         if self.score_low >= self.score_high:
             p.append("SCORE_LOW harus lebih kecil dari SCORE_HIGH")
+        for k in ("fast_mode", "dexpaid_mode", "mig_mode", "trend_mode"):
+            if getattr(self, k) not in self.LANE_MODES:
+                p.append(f"{k.upper()} harus salah satu dari {'/'.join(self.LANE_MODES)}")
+        if self.trend_interval not in ("1m", "5m", "1h", "6h", "24h"):
+            p.append("TREND_INTERVAL harus 1m/5m/1h/6h/24h")
+        if self.exit_trail_pct <= 0 or self.exit_trail_arm_pct <= 0 or self.exit_sl_pct <= 0:
+            p.append("EXIT_TRAIL_PCT / EXIT_TRAIL_ARM_PCT / EXIT_SL_PCT harus > 0")
         if self.position_size_sol <= 0:
             p.append("POSITION_SIZE_SOL harus > 0")
         if self.max_open_positions < 1:
@@ -249,5 +360,6 @@ class Settings(BaseSettings):
             "max_open_positions": str(self.max_open_positions),
             "daily_loss_cap_sol": str(self.daily_loss_cap_sol),
             "score_low/high": f"{self.score_low}/{self.score_high}",
-            "paper": f"size {self.position_size_sol} SOL · tp {self.exit_tp_pct:.0%} · sl {self.exit_sl_pct:.0%} · max {self.max_open_positions} pos",
+            "paper": f"size {self.position_size_sol} SOL · sl {self.exit_sl_pct:.0%} · trail {self.exit_trail_arm_pct:.0%}/{self.exit_trail_pct:.0%} · hold {self.exit_max_hold_sec // 60}m · max {self.max_open_positions} pos",
+            "lanes": f"fast={self.fast_mode} dexpaid={self.dexpaid_mode if self.dexpaid_enabled else 'off'} migration={self.mig_mode} trending={self.trend_mode}",
         }

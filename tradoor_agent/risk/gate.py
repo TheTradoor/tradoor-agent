@@ -36,7 +36,7 @@ class RiskGate:
             return deny("kill")
         if st.paused:
             return deny("paused")
-        if lane not in (Lane.FAST, Lane.GREY, Lane.DEXPAID):
+        if not lane.tradable:
             return deny(f"lane:{lane.value}")
 
         open_n = await db.open_positions_count()

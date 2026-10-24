@@ -32,14 +32,41 @@ skor 85+ (momentum) 86% drawdown > 30%; bond 60%+ median +4% @30m vs bond 20-60%
 Makanya v0.7 (strategi B): TP 50 / SL 15 / trail 30-15 / hold 30m, entry butuh bond >= 60% (atau migrated) + smart >= 2,
 bobot momentum 0, context (stage + smart money) 40.
 
-## Lane dexpaid (v0.7)
+## Lane / trigger (v0.8)
 
-`ingest/dexpaid.py` polling `api.dexscreener.com/token-profiles/latest/v1` tiap 2 detik; token Solana yang baru muncul di feed =
-baru bayar profil DexScreener. Event masuk ke trader: GMGN snapshot → hard gates struktural yang sama (bundler, dev, sniper, honeypot,
-serial launcher) tanpa minimum mcap → filter chase (lebih longgar, `DEXPAID_MAX_CHASE_1M`) + distribusi → risk gate → BUY dengan
-exit profile sendiri (`DEXPAID_EXIT_*`: tp 30 / sl 12 / hold 5m). Trade tercatat `lane=dexpaid`; tile win rate dan `/api/status`
-`lane_stats` memisahkan hasil per lane, jadi lane utama vs dexpaid bisa dibandingkan pakai data. `DEXPAID_ENABLED=false` mematikan.
-Catatan: bot dexpaid sniper lain masuk dalam 2-3 detik; polling 2 detik + GMGN snapshot = kita beberapa detik di belakang mereka.
+Hasil v0.7 setelah 118 jam: 107 trade, -0.283 SOL. Lane dexpaid 81 trade / -0.250 SOL (beli token bonding-curve umur < 2 jam,
+holders 25, beberapa detik di belakang sniper), lane fast 26 trade / -0.033 (TP 50% hampir tak pernah kena, winner balikin 15%
+lewat trail, loser kena SL penuh). Pembanding: bot yang terbukti profit (artikel "Meme Solana Trading Bot Using an AI Agent",
+kartu GMGN +$515 / ~1.300 trade / 30 hari = +1,56% per trade) main di token yang **sudah punya pool & likuid**, masuk dari
+**trigger spesifik**, exit **trail ketat** (aktif +10%, trail 5%, time stop), size kecil, puluhan trade per hari, dan dry run
+ratusan posisi **per trigger** sebelum live. v0.8 meniru bentuk itu:
+
+```
+trigger  ──> trader._handle_trigger: GMGN snapshot
+               -> umur token <= TRIG_MAX_TOKEN_AGE_SEC
+               -> gates struktural (top10, dev, bundler, sniper, entrapment, serial launcher, honeypot, renounced)  gagal = DROP
+               -> filter "belum siap" (bonding curve, holders, likuiditas, mcap, chase 1m/5m, bleeding 1m, sepi, distribusi)
+                  gagal = WAIT: cek ulang tiap <LANE>_RECHECK_SEC sampai <LANE>_WINDOW_SEC habis (GIVE UP)
+               -> lolos: catat kandidat (lane = trigger) + tracker ikuti harganya 30 menit
+                  mode trade   -> risk gate -> BUY (exit: trail 10/5 · SL 12 · hold 15m · flat 5m)
+                  mode observe -> OBSERVE (dicatat, tidak beli)
+```
+
+| lane | sumber | default |
+|---|---|---|
+| `fast` | launch PumpPortal → screener → scorer (alur fase 2) | `FAST_MODE=trade`, filter `ENTRY_*` |
+| `dexpaid` | DexScreener `token-profiles/latest` + `token-boosts/latest` (poll 2s) | wajib pool, chase 1m ≤ 40% |
+| `migration` | PumpPortal `subscribeMigration` → tunggu `MIG_FIRST_CHECK_SEC` 30s | holders ≥ 100, liq ≥ $15k, mcap ≥ $50k, 1m ≥ -5%, jendela 5m |
+| `trending` | GMGN `/v1/market/rank` top 40 by swaps/1m (poll 10s, weight 1) | token baru masuk top N, jendela 90s |
+
+Filter bersama `TRIG_*` (holders 60, liq $10k, mcap $30k-1M, umur ≤ 24h, chase ≤ 30%, bleeding ≥ -10%, swaps ≥ 10, sell ≤ 60%);
+override per lane dengan prefix `DEXPAID_` / `MIG_` / `TREND_`. Exit `EXIT_*` berlaku semua lane, override `<LANE>_EXIT_*`.
+`<LANE>_MODE=observe` mencatat tanpa beli (tidak dibatasi MAX_OPEN_POSITIONS → data per trigger utuh). Tracker (`tracker.py`)
+menulis baris `candidates` lane `track` tiap 30s selama 30 menit untuk tiap token yang lolos; `tools/outlook.py --lane migration`
+membaca itu dan mensimulasikan exit (termasuk trail) per lane. Paper fee: slippage 150 bps + fee 100 bps + `PAPER_FIXED_FEE_SOL`
+0.0005 per sisi (~6% round trip di posisi 0.1 SOL) — sengaja pesimis; edge yang tidak selamat dari itu bukan edge.
+
+Yang dibutuhkan sebelum ngomongin live: ratusan posisi per lane, exp/trade positif di outlook DAN di trades nyata (tick), per lane.
 
 Semua keputusan tersimpan: `decisions` (termasuk alasan skip), `orders`, `fills`, `positions` (meta: skor, komponen, peak), `trades`,
 `llm_reviews`. Itu bahan autopsy fase 5.
@@ -84,6 +111,8 @@ tradoor_agent/
   params.py        override param live dari tabel params (/set)
   screener.py      watchlist + GMGN snapshot + hard gates -> candidates
   ingest/pumpportal.py  WS client (reconnect, backoff, parser create/buy/sell/migrate)
+  ingest/triggers.py    trigger sources v0.8: dexpaid (profiles+boosts), migration (delay), trending (GMGN rank) → TOPIC_TRIGGER
+  tracker.py            outcome tracker: path harga 30 menit tiap token yang lolos lane → candidates lane=track
   ingest/gmgn.py        OpenAPI client (X-APIKEY, weight bucket, cache, cooldown saat 429) + normalisasi snapshot
   gates/rules.py        cheap_gates + hard_gates (pure functions)
   ops/telegram.py  remote control + alert
@@ -91,7 +120,7 @@ tradoor_agent/
   scoring/ risk/ llm_review/ execution/ positions/ slow_loop/   (fase berikutnya)
 tests/test_phase1.py    replay test tanpa network: python -m tests.test_phase1
 tests/test_dashboard.py tes semua route dashboard: python -m tests.test_dashboard
-tests/test_phase2.py     replay buy → tp / sl paper + tick SL + lane dexpaid: python -m tests.test_phase2
+tests/test_phase2.py     replay buy → tp / sl paper + tick SL + lane migration (trail) + wait/give-up + observe + tracker + flat stop
 tradoor_agent/tools/outlook.py   analisis: apa yang terjadi pada kandidat setelah lolos (python -m tradoor_agent.tools.outlook --hours 48)
 deploy/
   install.sh       setup venv + systemd di VPS, aman dijalankan ulang
@@ -113,6 +142,9 @@ bash deploy/install.sh
 
 # log
 journalctl -u tradoor-agent -f
+
+# update ke versi terbaru (git pull, bersihkan key .env lama, check, restart)
+bash deploy/upgrade.sh
 ```
 
 Manual tanpa systemd:

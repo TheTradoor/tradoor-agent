@@ -19,9 +19,9 @@ from .config import Settings
 from .db import Database
 from .execution.paper import PaperBroker
 from .housekeeper import Housekeeper
-from .ingest.dexpaid import DexPaidDetector
 from .ingest.gmgn import GmgnClient
 from .ingest.pumpportal import PumpPortalIngest
+from .ingest.triggers import DexPaidDetector, MigrationTrigger, TrendingDetector
 from .logging_setup import setup_logging
 from .ops.telegram import TelegramOps
 from .ops.web import WebDashboard
@@ -30,6 +30,7 @@ from .positions.manager import PositionManager
 from .screener import Screener
 from .scoring.scorer import Scorer
 from .state import RuntimeState
+from .tracker import OutcomeTracker
 from .trader import Trader
 
 log = logging.getLogger("agent.supervisor")
@@ -60,9 +61,11 @@ def build_components(ctx: Context) -> list[Component]:
         comps.append(screener)
         # phase 2: score -> risk -> paper broker -> position manager (all modes use the paper broker until phase 3)
         broker = PaperBroker(ctx, gmgn)
-        dexpaid = DexPaidDetector(ctx)
-        ctx.dexpaid = dexpaid
-        comps += [Scorer(ctx), Trader(ctx, broker, ingest, gmgn), PositionManager(ctx, gmgn, broker, ingest), dexpaid]
+        # v0.8 trigger lanes + the outcome tracker that grades them
+        dexpaid, trending, migration = DexPaidDetector(ctx), TrendingDetector(ctx, gmgn), MigrationTrigger(ctx)
+        tracker = OutcomeTracker(ctx, gmgn)
+        ctx.dexpaid, ctx.trending, ctx.tracker = dexpaid, trending, tracker
+        comps += [Scorer(ctx), Trader(ctx, broker, ingest, gmgn), PositionManager(ctx, gmgn, broker, ingest), dexpaid, trending, migration, tracker]
     else:
         log.warning("GMGN_API_KEY kosong: screener/scorer/trader tidak dijalankan, hanya ingest")
     if ctx.settings.web_enabled:
